@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Pencil, Trash2, Plus, Upload, X } from 'lucide-react';
+import { Pencil, Trash2, Plus, Upload, X, Image } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Material } from '@/types';
 import { useMaterialStore } from '@/store/materialStore';
 import { useArticleStore } from '@/store/articleStore';
 import { useToast } from '@/components/ui/Toast';
+import ArticleSelectorModal from '@/components/ui/ArticleSelectorModal';
+import InsertSuccessModal from '@/components/ui/InsertSuccessModal';
 
 interface ImageGalleryProps {
   materials: Material[];
@@ -26,9 +28,14 @@ export default function ImageGallery({ materials }: ImageGalleryProps) {
   const [editCaption, setEditCaption] = useState('');
   const [editSource, setEditSource] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [showInsertModal, setShowInsertModal] = useState(false);
+  const [insertingImage, setInsertingImage] = useState<Material | null>(null);
+  const [insertCaption, setInsertCaption] = useState('');
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successArticleId, setSuccessArticleId] = useState('');
 
   const { addMaterial, deleteMaterial, updateMaterial } = useMaterialStore();
-  const { appendDraftContent } = useArticleStore();
+  const { appendDraftContent, setLastEditedArticleId } = useArticleStore();
   const { showToast } = useToast();
 
   const images = materials.filter((m) => m.type === 'image');
@@ -74,9 +81,20 @@ export default function ImageGallery({ materials }: ImageGalleryProps) {
   };
 
   const handleInsert = (image: Material) => {
-    const title = image.caption || image.title;
-    appendDraftContent('a001', `\n\n![${title}](${image.imageUrl})\n`);
-    showToast(`已插入「${image.title}」图片到写作草稿`, 'success');
+    setInsertingImage(image);
+    setInsertCaption(image.caption || image.title);
+    setShowInsertModal(true);
+  };
+
+  const handleConfirmInsert = (articleId: string) => {
+    if (!insertingImage) return;
+    const markdown = `\n\n![${insertCaption}](${insertingImage.imageUrl})\n`;
+    appendDraftContent(articleId, markdown);
+    setLastEditedArticleId(articleId);
+    setShowInsertModal(false);
+    setInsertingImage(null);
+    setSuccessArticleId(articleId);
+    setShowSuccessModal(true);
   };
 
   return (
@@ -274,6 +292,57 @@ export default function ImageGallery({ materials }: ImageGalleryProps) {
           </div>
         </div>
       )}
+
+      <ArticleSelectorModal
+        open={showInsertModal}
+        onClose={() => {
+          setShowInsertModal(false);
+          setInsertingImage(null);
+        }}
+        onSelect={handleConfirmInsert}
+        title="插入图片"
+        confirmText="确认插入"
+      >
+        <div>
+          <h4 className="text-sm font-semibold text-ink-700 mb-3">即将插入的内容</h4>
+          <div className="flex gap-4">
+            {insertingImage?.imageUrl && (
+              <div className="w-24 h-24 shrink-0 rounded-lg overflow-hidden border border-paper-200">
+                <img
+                  src={insertingImage.imageUrl}
+                  alt={insertCaption}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+            <div className="flex-1 space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-ink-500 mb-1.5">图片说明</label>
+                <input
+                  type="text"
+                  value={insertCaption}
+                  onChange={(e) => setInsertCaption(e.target.value)}
+                  placeholder="请输入图片说明"
+                  className="w-full px-3 py-2 text-sm border border-paper-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-vermilion/30 focus:border-vermilion"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-ink-500 mb-1.5">Markdown 预览</label>
+                <div className="p-3 bg-paper-100 rounded-lg text-sm text-ink-600 font-mono text-xs break-all">
+                  ![{insertCaption}]({insertingImage?.imageUrl || '...'})
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </ArticleSelectorModal>
+
+      <InsertSuccessModal
+        open={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        articleId={successArticleId}
+        message="图片已成功插入到"
+      />
     </div>
   );
 }

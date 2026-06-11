@@ -1,11 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import type { OutlineSection, AITone } from '@/types';
+import type { OutlineSection, AITone, AIOperation, AIOperationType, DraftVersion, DraftVersionSource } from '@/types';
 import RichEditor from './RichEditor';
 import AIToolbox from './AIToolbox';
+import AIOperationHistory from './AIOperationHistory';
+import DraftVersionPanel from './DraftVersionPanel';
+import DraftDiffModal from './DraftDiffModal';
 import WritingProgress from './WritingProgress';
+import { useArticleStore } from '@/store/articleStore';
 import { cn } from '@/lib/utils';
-import { PenLine, ChevronLeft, ChevronRight, BookOpen, CheckCircle } from 'lucide-react';
+import { PenLine, ChevronLeft, ChevronRight, BookOpen, CheckCircle, GitBranch, Save, RotateCcw, AlertTriangle, X } from 'lucide-react';
 
 const mockOutline: OutlineSection[] = [
   {
@@ -184,9 +188,111 @@ export default function WritingDesk() {
   });
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const { saveDraftVersion, getDraftVersions } = useArticleStore();
+  const opsStorageKey = `mobi_ai_ops_${articleId}`;
+  const MAX_OPERATIONS = 20;
+
+  const [aiOperations, setAiOperations] = useState<AIOperation[]>(() => {
+    try {
+      const saved = localStorage.getItem(opsStorageKey);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const wordCount = content.replace(/\s/g, '').length;
   const targetWordCount = 3700;
+
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [draftNote, setDraftNote] = useState('');
+  const [showVersionPanel, setShowVersionPanel] = useState(false);
+  const [diffVersion, setDiffVersion] = useState<DraftVersion | null>(null);
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+  const [versionToRestore, setVersionToRestore] = useState<DraftVersion | null>(null);
+  const [draftVersions, setDraftVersions] = useState<DraftVersion[]>([]);
+
+  const refreshDraftVersions = useCallback(() => {
+    setDraftVersions(getDraftVersions(articleId));
+  }, [articleId, getDraftVersions]);
+
+  const showToastMessage = useCallback((message: string) => {
+    setToastMessage(message);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 2500);
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(opsStorageKey, JSON.stringify(aiOperations));
+    } catch {
+      // ignore
+    }
+  }, [aiOperations, opsStorageKey]);
+
+  const addOperation = useCallback((op: Omit<AIOperation, 'id' | 'timestamp'>) => {
+    const newOp: AIOperation = {
+      ...op,
+      id: `op-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      timestamp: new Date().toISOString(),
+    };
+    setAiOperations((prev) => {
+      const updated = [newOp, ...prev];
+      return updated.slice(0, MAX_OPERATIONS);
+    });
+  }, []);
+
+  const handleJumpTo = useCallback((position: number) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.focus();
+    const safePos = Math.min(Math.max(0, position), content.length);
+    ta.setSelectionRange(safePos, safePos);
+    const lineHeight = 24;
+    const linesBefore = content.slice(0, safePos).split('\n').length;
+    ta.scrollTop = Math.max(0, linesBefore * lineHeight - 100);
+  }, [content]);
+
+  const handleUndo = useCallback((opId: string) => {
+    const op = aiOperations.find((o) => o.id === opId);
+    if (!op) return;
+
+    const sortedOps = [...aiOperations].sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+    const latestOp = sortedOps[0];
+
+    if (op.id !== latestOp?.id) {
+      showToastMessage('只能撤销最近一次 AI 操作');
+      return;
+    }
+
+    const currentText = content.slice(op.position, op.position + op.newText.length);
+    if (currentText !== op.newText) {
+      showToastMessage('内容已变更，无法撤销该操作');
+      setAiOperations((prev) => prev.filter((o) => o.id !== opId));
+      return;
+    }
+
+    const newContent = content.slice(0, op.position) + op.oldText + content.slice(op.position + op.newText.length);
+    setContent(newContent);
+    setAiOperations((prev) => prev.filter((o) => o.id !== opId));
+    showToastMessage(`已撤销「${op.label}」`);
+
+    setTimeout(() => {
+      handleJumpTo(op.position);
+    }, 50);
+  }, [aiOperations, content, showToastMessage, handleJumpTo]);
+
+  const handleUndoLatest = useCallback(() => {
+    const sortedOps = [...aiOperations].sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+    const latestOp = sortedOps[0];
+    if (latestOp) {
+      handleUndo(latestOp.id);
+    }
+  }, [aiOperations, handleUndo]);
 
   useEffect(() => {
     try {
@@ -202,12 +308,6 @@ export default function WritingDesk() {
       // ignore
     }
   }, [storageKey, appendStorageKey]);
-
-  const showToastMessage = useCallback((message: string) => {
-    setToastMessage(message);
-    setShowToast(true);
-    setTimeout(() => setShowToast(false), 2500);
-  }, []);
 
   const onApplyTone = useCallback((tone: AITone, _selectedText?: string): string => {
     const ta = textareaRef.current;
@@ -252,10 +352,31 @@ export default function WritingDesk() {
     }
 
     const newContent = content.slice(0, replaceStart) + modified + content.slice(replaceEnd);
+
+    if (targetText !== modified) {
+      addOperation({
+        type: 'tone',
+        label: `改写为${toneLabelMap[tone]}语气`,
+        position: replaceStart,
+        length: modified.length,
+        oldText: targetText,
+        newText: modified,
+      });
+    }
+
     setContent(newContent);
+
+    if (targetText !== modified) {
+      const note = `AI 改写为「${toneLabelMap[tone]}」语气`;
+      setTimeout(() => {
+        saveDraftVersion(articleId, newContent, note, 'ai_tone');
+        refreshDraftVersions();
+      }, 0);
+    }
+
     showToastMessage(`已将${start !== end ? '所选内容' : '当前段落'}改写为「${toneLabelMap[tone]}」语气`);
     return newContent;
-  }, [content, showToastMessage]);
+  }, [content, showToastMessage, addOperation, articleId, saveDraftVersion, refreshDraftVersions]);
 
   const onExpand = useCallback((level: string): string => {
     const ta = textareaRef.current;
@@ -267,16 +388,34 @@ export default function WritingDesk() {
         insertPos = cursorPos;
       }
     }
+
+    addOperation({
+      type: 'expand',
+      label: `${level}案例扩写`,
+      position: insertPos,
+      length: caseText.length,
+      oldText: '',
+      newText: caseText,
+    });
+
     const newContent = content.slice(0, insertPos) + caseText + content.slice(insertPos);
     setContent(newContent);
+
+    const note = `AI 扩写案例（${level}）`;
+    setTimeout(() => {
+      saveDraftVersion(articleId, newContent, note, 'ai_expand');
+      refreshDraftVersions();
+    }, 0);
+
     showToastMessage(`已追加${level}案例段落`);
     return newContent;
-  }, [content, showToastMessage]);
+  }, [content, showToastMessage, addOperation, articleId, saveDraftVersion, refreshDraftVersions]);
 
   const onInsertGolden = useCallback((index: number): string => {
     const ta = textareaRef.current;
     const actualIndex = index % goldenSentences.length;
     const golden = `「${goldenSentences[actualIndex]}」`;
+    const insertedText = '\n\n' + golden + '\n\n';
     let insertPos: number;
     if (ta) {
       const cursorPos = ta.selectionStart;
@@ -292,13 +431,31 @@ export default function WritingDesk() {
     } else {
       insertPos = content.length;
     }
-    const newContent = content.slice(0, insertPos) + '\n\n' + golden + '\n\n' + content.slice(insertPos);
+
+    addOperation({
+      type: 'golden',
+      label: '插入金句',
+      position: insertPos,
+      length: insertedText.length,
+      oldText: '',
+      newText: insertedText,
+    });
+
+    const newContent = content.slice(0, insertPos) + insertedText + content.slice(insertPos);
     setContent(newContent);
+
+    const note = 'AI 插入金句';
+    setTimeout(() => {
+      saveDraftVersion(articleId, newContent, note, 'ai_golden');
+      refreshDraftVersions();
+    }, 0);
+
     showToastMessage('金句已插入');
     return newContent;
-  }, [content, showToastMessage]);
+  }, [content, showToastMessage, addOperation, articleId, saveDraftVersion, refreshDraftVersions]);
 
   const onPolish = useCallback((_options: string[]): string => {
+    const oldContent = content;
     let newContent = content
       .replace(/非常/g, '尤为')
       .replace(/但是/g, '然而')
@@ -308,19 +465,75 @@ export default function WritingDesk() {
       .replace(/！！/g, '！')
       .replace(/？？/g, '？')
       .replace(/\s+([，。！？；：])/g, '$1');
+
+    if (oldContent !== newContent) {
+      addOperation({
+        type: 'polish',
+        label: '全文润色',
+        position: 0,
+        length: newContent.length,
+        oldText: oldContent,
+        newText: newContent,
+      });
+    }
+
     setContent(newContent);
+
+    if (oldContent !== newContent) {
+      const note = 'AI 全文润色';
+      setTimeout(() => {
+        saveDraftVersion(articleId, newContent, note, 'ai_tone');
+        refreshDraftVersions();
+      }, 0);
+    }
+
     showToastMessage('润色完成');
     return newContent;
-  }, [content, showToastMessage]);
+  }, [content, showToastMessage, addOperation, articleId, saveDraftVersion, refreshDraftVersions]);
 
   const handleSaveDraft = useCallback(() => {
-    try {
-      localStorage.setItem(storageKey, content);
-      showToastMessage('草稿已保存');
-    } catch {
-      showToastMessage('保存失败，请重试');
-    }
-  }, [storageKey, content, showToastMessage]);
+    setDraftNote('');
+    setShowSaveModal(true);
+  }, []);
+
+  const confirmSaveDraft = useCallback(() => {
+    const note = draftNote.trim() || '手动保存';
+    const newVersion = saveDraftVersion(articleId, content, note, 'manual');
+    showToastMessage(`已保存第 ${newVersion.versionNumber} 版草稿`);
+    setShowSaveModal(false);
+    setDraftNote('');
+    refreshDraftVersions();
+  }, [articleId, content, draftNote, saveDraftVersion, showToastMessage, refreshDraftVersions]);
+
+  const handleViewVersion = useCallback((version: DraftVersion) => {
+    setDiffVersion(version);
+  }, []);
+
+  const handleRestoreVersion = useCallback((version: DraftVersion) => {
+    setVersionToRestore(version);
+    setShowRestoreConfirm(true);
+  }, []);
+
+  const confirmRestore = useCallback(() => {
+    if (!versionToRestore) return;
+
+    const preRestoreNote = `恢复前的版本（恢复到第 ${versionToRestore.versionNumber} 版前）`;
+    saveDraftVersion(articleId, content, preRestoreNote, 'manual');
+
+    setContent(versionToRestore.content);
+    localStorage.setItem(storageKey, versionToRestore.content);
+
+    showToastMessage(`已恢复到第 ${versionToRestore.versionNumber} 版`);
+    setShowRestoreConfirm(false);
+    setVersionToRestore(null);
+    setDiffVersion(null);
+    setShowVersionPanel(false);
+    refreshDraftVersions();
+  }, [versionToRestore, articleId, content, saveDraftVersion, storageKey, showToastMessage, refreshDraftVersions]);
+
+  useEffect(() => {
+    refreshDraftVersions();
+  }, [refreshDraftVersions]);
 
   return (
     <div className="h-screen bg-paper-100 flex flex-col overflow-hidden relative">
@@ -350,9 +563,22 @@ export default function WritingDesk() {
             已写 <span className="font-semibold text-ink-800">{wordCount.toLocaleString()}</span> 字
           </span>
           <button
-            onClick={handleSaveDraft}
-            className="px-4 py-2 bg-moss text-white text-sm font-medium rounded-lg hover:bg-moss-600 transition-colors"
+            onClick={() => setShowVersionPanel(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-ink-600 bg-ink-50 rounded-lg hover:bg-ink-100 transition-colors"
           >
+            <GitBranch className="w-4 h-4" />
+            <span>版本历史</span>
+            {draftVersions.length > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 bg-vermilion text-white rounded-full">
+                {draftVersions.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={handleSaveDraft}
+            className="flex items-center gap-1.5 px-4 py-2 bg-vermilion text-white text-sm font-medium rounded-lg hover:bg-vermilion-600 transition-colors"
+          >
+            <Save className="w-4 h-4" />
             保存草稿
           </button>
         </div>
@@ -414,8 +640,143 @@ export default function WritingDesk() {
             onInsertGolden={onInsertGolden}
             onPolish={onPolish}
           />
+          <AIOperationHistory
+            operations={aiOperations}
+            onJumpTo={handleJumpTo}
+            onUndo={handleUndo}
+            onUndoLatest={handleUndoLatest}
+          />
         </aside>
       </div>
+
+      {showSaveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-[480px] overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-vermilion-50 rounded-xl flex items-center justify-center">
+                  <Save className="w-4 h-4 text-vermilion" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-ink-800">保存草稿版本</h3>
+                  <p className="text-xs text-ink-400">记录本次修改的内容</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSaveModal(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-ink-400 hover:text-ink-700 hover:bg-ink-50 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-ink-700 mb-2">
+                  版本备注
+                </label>
+                <textarea
+                  value={draftNote}
+                  onChange={(e) => setDraftNote(e.target.value)}
+                  placeholder="这个版本改了什么？可选..."
+                  rows={4}
+                  className="w-full resize-none rounded-xl border border-ink-200 bg-ink-50 px-4 py-3 text-sm text-ink-700 placeholder:text-ink-300 focus:outline-none focus:border-vermilion-300 focus:ring-2 focus:ring-vermilion-50 transition-all"
+                  autoFocus
+                />
+              </div>
+              <div className="text-xs text-ink-400 bg-ink-50 rounded-xl p-3 space-y-1">
+                <p>将基于当前正文内容创建新版本快照</p>
+                <p>版本号将自动递增</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-ink-100 bg-ink-50">
+              <button
+                onClick={() => setShowSaveModal(false)}
+                className="px-4 py-2 text-sm font-medium text-ink-600 bg-white border border-ink-200 rounded-xl hover:bg-ink-50 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmSaveDraft}
+                className="flex items-center gap-1.5 px-5 py-2 text-sm font-medium text-white bg-vermilion rounded-xl hover:bg-vermilion-600 transition-colors"
+              >
+                <Save className="w-4 h-4" />
+                保存版本
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showVersionPanel && (
+        <div className="fixed inset-y-0 right-0 z-40 w-80 bg-white shadow-2xl border-l border-ink-100 animate-in slide-in-from-right duration-300">
+          <DraftVersionPanel
+            versions={draftVersions}
+            currentContent={content}
+            onView={handleViewVersion}
+            onRestore={handleRestoreVersion}
+            onClose={() => setShowVersionPanel(false)}
+          />
+        </div>
+      )}
+
+      {diffVersion && (
+        <DraftDiffModal
+          version={diffVersion}
+          currentContent={content}
+          onClose={() => setDiffVersion(null)}
+          onRestore={() => {
+            setVersionToRestore(diffVersion);
+            setShowRestoreConfirm(true);
+          }}
+        />
+      )}
+
+      {showRestoreConfirm && versionToRestore && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-[420px] overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-5">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-full bg-gold-50 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-gold-500" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-base font-semibold text-ink-800 mb-1">确认恢复版本</h3>
+                  <p className="text-sm text-ink-500">
+                    确定要恢复到 <span className="font-semibold text-vermilion">第 {versionToRestore.versionNumber} 版</span> 吗？
+                  </p>
+                  <p className="text-xs text-ink-400 mt-2">
+                    当前内容会被自动保存为新版本，以防后悔
+                  </p>
+                </div>
+              </div>
+              {versionToRestore.note && (
+                <div className="mt-4 p-3 bg-ink-50 rounded-xl">
+                  <p className="text-xs text-ink-400 mb-1">版本备注</p>
+                  <p className="text-sm text-ink-600">{versionToRestore.note}</p>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-ink-100 bg-ink-50">
+              <button
+                onClick={() => {
+                  setShowRestoreConfirm(false);
+                  setVersionToRestore(null);
+                }}
+                className="px-4 py-2 text-sm font-medium text-ink-600 bg-white border border-ink-200 rounded-xl hover:bg-ink-50 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmRestore}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-vermilion rounded-xl hover:bg-vermilion-600 transition-colors"
+              >
+                <RotateCcw className="w-4 h-4" />
+                确认恢复
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

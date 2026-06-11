@@ -1,6 +1,9 @@
 import { useState, useMemo } from 'react';
-import { CheckSquare, FileText, Sparkles, Check, X, AlertCircle, Info } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { CheckSquare, FileText, Sparkles, Check, X, AlertCircle, Info, ArrowRight, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/components/ui/Toast';
+import { useArticleStore } from '@/store/articleStore';
 import type { ReviewIssue, IssueType } from '@/types';
 
 const typeLabels: Record<IssueType, string> = {
@@ -27,6 +30,7 @@ interface ModifiedSegment {
 interface DiffViewerProps {
   issues: ReviewIssue[];
   articleContent: string;
+  articleId: string;
   onAcceptAll: () => void;
   onAcceptOne: (id: string) => void;
   onIgnoreOne: (id: string) => void;
@@ -36,12 +40,20 @@ interface DiffViewerProps {
 export default function DiffViewer({
   issues,
   articleContent,
+  articleId,
   onAcceptAll,
   onAcceptOne,
   onIgnoreOne,
   articleTitle,
 }: DiffViewerProps) {
+  const navigate = useNavigate();
+  const { showToast } = useToast();
+  const saveDraftVersion = useArticleStore((state) => state.saveDraftVersion);
+  const getDraftContent = useArticleStore((state) => state.getDraftContent);
+
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showApplyConfirm, setShowApplyConfirm] = useState(false);
+  const [isApplying, setIsApplying] = useState(false);
   const [hoveredIssueId, setHoveredIssueId] = useState<string | null>(null);
 
   const unresolvedCount = issues.filter((i) => !i.resolved).length;
@@ -147,6 +159,49 @@ export default function DiffViewer({
   const handleConfirmAcceptAll = () => {
     onAcceptAll();
     setShowConfirm(false);
+  };
+
+  const handleApplyToDraft = () => {
+    setShowApplyConfirm(true);
+  };
+
+  const handleConfirmApply = async () => {
+    setIsApplying(true);
+
+    try {
+      const acceptedIssues = issues
+        .filter((i) => i.resolved && i.resolvedType === 'accepted')
+        .sort((a, b) => b.position - a.position);
+
+      let originalContent = getDraftContent(articleId);
+      if (!originalContent || originalContent.length === 0) {
+        originalContent = articleContent;
+      }
+
+      let result = originalContent;
+      for (const issue of acceptedIssues) {
+        if (issue.position <= result.length) {
+          result =
+            result.slice(0, issue.position) +
+            (issue.suggestion || issue.originalText) +
+            result.slice(issue.position + issue.originalText.length);
+        }
+      }
+
+      const note = `审核通过：已应用 ${acceptedCount} 处修改`;
+      saveDraftVersion(articleId, result, note, 'review_apply');
+
+      showToast('已应用审核修改，生成新草稿版本', 'success');
+      setShowApplyConfirm(false);
+    } catch (error) {
+      showToast('应用失败，请重试', 'error');
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  const handleGoToWrite = () => {
+    navigate(`/write/${articleId}`);
   };
 
   const getOriginalBadgeClass = (issue: ReviewIssue) => {
@@ -416,6 +471,35 @@ export default function DiffViewer({
               </div>
             </article>
           </div>
+          <div className="px-5 py-4 border-t border-paper-200 bg-paper-50">
+            <button
+              onClick={handleApplyToDraft}
+              disabled={acceptedCount === 0 || isApplying}
+              className={cn(
+                'w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl transition-all',
+                acceptedCount === 0 || isApplying
+                  ? 'bg-ink-100 text-ink-400 cursor-not-allowed'
+                  : 'bg-moss-600 text-white hover:bg-moss-700 shadow-moss-200 shadow-lg hover:shadow-xl'
+              )}
+            >
+              {isApplying ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  应用中...
+                </>
+              ) : acceptedCount === 0 ? (
+                <>
+                  <CheckSquare className="w-4 h-4" />
+                  暂无已接受的修改
+                </>
+              ) : (
+                <>
+                  <CheckSquare className="w-4 h-4" />
+                  应用 {acceptedCount} 处修改到草稿
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -451,6 +535,60 @@ export default function DiffViewer({
                 确认接受
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showApplyConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-paper rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-moss-100 flex items-center justify-center shrink-0">
+                <CheckSquare className="w-5 h-5 text-moss-600" />
+              </div>
+              <div>
+                <h4 className="text-base font-bold text-ink-800">应用到草稿</h4>
+                <p className="text-xs text-ink-500">将生成新的草稿版本</p>
+              </div>
+            </div>
+            <div className="bg-paper-50 rounded-xl p-4 mb-5 space-y-2">
+              <p className="text-sm text-ink-600">
+                即将把 <span className="font-bold text-moss-600">{acceptedCount}</span> 处已接受的修改应用到草稿。
+              </p>
+              <p className="text-xs text-ink-400">会生成一个新的草稿版本，你可以在写作页查看。</p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowApplyConfirm(false)}
+                disabled={isApplying}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-ink-600 bg-paper-100 rounded-xl hover:bg-paper-200 transition-colors disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmApply}
+                disabled={isApplying}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-moss-600 rounded-xl hover:bg-moss-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {isApplying ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    应用中...
+                  </>
+                ) : (
+                  <>
+                    确认应用
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </div>
+            <button
+              onClick={handleGoToWrite}
+              className="w-full mt-3 text-xs text-moss-600 hover:text-moss-700 font-medium flex items-center justify-center gap-1 transition-colors"
+            >
+              前往写作页查看 →
+            </button>
           </div>
         </div>
       )}

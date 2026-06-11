@@ -118,6 +118,7 @@ export default function ReviewCenter() {
             <DiffViewer
               issues={articleIssues}
               articleContent={SIMULATED_ARTICLE_CONTENT}
+              articleId={articleId}
               onAcceptAll={handleAcceptAll}
               onAcceptOne={handleAccept}
               onIgnoreOne={handleIgnore}

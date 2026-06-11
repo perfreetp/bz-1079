@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Article, Task, OutlineSection, TitleOption, ReviewIssue, Version, Comment, ResolvedType } from '@/types';
+import type { Article, Task, OutlineSection, TitleOption, ReviewIssue, Version, Comment, ResolvedType, VersionSource, DraftVersion, DraftVersionSource } from '@/types';
 import { articles, tasks } from '@/data/articles';
 import { outlineSections, titleOptions, reviewIssues as defaultReviewIssues, versions as initialVersions, comments as initialComments } from '@/data/materials';
 
@@ -98,10 +98,31 @@ const initVersions = (): Version[] => {
   return allVersions;
 };
 
+const loadDraftVersionsFromStorage = (articleId: string): DraftVersion[] => {
+  try {
+    const raw = localStorage.getItem(`mobi_draft_versions_${articleId}`);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+};
+
+const saveDraftVersionsToStorage = (articleId: string, versions: DraftVersion[]) => {
+  try {
+    localStorage.setItem(`mobi_draft_versions_${articleId}`, JSON.stringify(versions));
+  } catch {
+    // ignore
+  }
+};
+
 interface ArticleStore {
   articles: Article[];
   tasks: Task[];
   currentArticleId: string | null;
+  lastEditedArticleId: string | null;
   outlineSections: OutlineSection[];
   titleOptions: TitleOption[];
   reviewIssues: ReviewIssue[];
@@ -109,6 +130,7 @@ interface ArticleStore {
   comments: Comment[];
 
   setCurrentArticle: (id: string | null) => void;
+  setLastEditedArticleId: (id: string) => void;
   getArticleById: (id: string) => Article | undefined;
   updateArticle: (id: string, updates: Partial<Article>) => void;
   updateOutlineSections: (sections: OutlineSection[]) => void;
@@ -119,7 +141,7 @@ interface ArticleStore {
   resolveIssue: (id: string) => void;
   ignoreIssue: (id: string) => void;
   acceptAllIssues: (articleId: string) => void;
-  saveVersion: (articleId: string, note: string, author: string, content: string) => void;
+  saveVersion: (articleId: string, note: string, author: string, content: string, source?: VersionSource) => void;
   getVersionsByArticleId: (articleId: string) => Version[];
   addComment: (comment: Comment) => void;
   resolveComment: (id: string) => void;
@@ -128,6 +150,11 @@ interface ArticleStore {
   loadIssuesForArticle: (articleId: string) => ReviewIssue[];
   appendDraftContent: (articleId: string, text: string) => void;
   getDraftContent: (articleId: string) => string;
+  saveDraftVersion: (articleId: string, content: string, note: string, source?: DraftVersionSource) => DraftVersion;
+  getDraftVersions: (articleId: string) => DraftVersion[];
+  getDraftVersionById: (articleId: string, versionId: string) => DraftVersion | null;
+  restoreDraftVersion: (articleId: string, versionId: string) => DraftVersion | null;
+  setDraftContent: (articleId: string, content: string) => void;
 }
 
 const getArticleIdByIssueId = (issues: ReviewIssue[], issueId: string): string | null => {
@@ -135,10 +162,27 @@ const getArticleIdByIssueId = (issues: ReviewIssue[], issueId: string): string |
   return issue ? issue.articleId : null;
 };
 
+const loadLastEditedArticleId = (): string | null => {
+  try {
+    return localStorage.getItem('mobi_last_article');
+  } catch {
+    return null;
+  }
+};
+
+const saveLastEditedArticleId = (id: string) => {
+  try {
+    localStorage.setItem('mobi_last_article', id);
+  } catch {
+    // ignore
+  }
+};
+
 export const useArticleStore = create<ArticleStore>((set, get) => ({
   articles,
   tasks,
   currentArticleId: null,
+  lastEditedArticleId: loadLastEditedArticleId(),
   outlineSections,
   titleOptions,
   reviewIssues: initReviewIssues(),
@@ -146,6 +190,11 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
   comments: initialComments,
 
   setCurrentArticle: (id) => set({ currentArticleId: id }),
+
+  setLastEditedArticleId: (id) => {
+    saveLastEditedArticleId(id);
+    set({ lastEditedArticleId: id });
+  },
 
   getArticleById: (id) => get().articles.find((a) => a.id === id),
 
@@ -216,7 +265,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
       return { reviewIssues: newIssues };
     }),
 
-  saveVersion: (articleId, note, author, content) => {
+  saveVersion: (articleId, note, author, content, source) => {
     const state = get();
     const articleVersions = state.versions.filter((v) => v.articleId === articleId);
     const maxVersion = articleVersions.length > 0 
@@ -231,6 +280,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
       note,
       author,
       createdAt: new Date().toISOString(),
+      source,
     };
 
     const nextVersions = [...state.versions, newVersion];
@@ -322,11 +372,66 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
   },
 
   getDraftContent: (articleId) => {
-    const key = `mobi_draft_content_${articleId}`;
+    const key = `mobi_draft_${articleId}`;
     try {
       return localStorage.getItem(key) || '';
     } catch {
       return '';
     }
+  },
+
+  setDraftContent: (articleId, content) => {
+    const key = `mobi_draft_${articleId}`;
+    try {
+      localStorage.setItem(key, content);
+    } catch {
+      // ignore
+    }
+  },
+
+  saveDraftVersion: (articleId, content, note, source) => {
+    const draftVersions = loadDraftVersionsFromStorage(articleId);
+    const maxVersion = draftVersions.length > 0
+      ? Math.max(...draftVersions.map((v) => v.versionNumber))
+      : 0;
+
+    const newVersion: DraftVersion = {
+      id: `dv-${Date.now()}`,
+      articleId,
+      versionNumber: maxVersion + 1,
+      content,
+      note,
+      createdAt: new Date().toISOString(),
+      wordCount: content.replace(/\s/g, '').length,
+      source,
+    };
+
+    const nextVersions = [...draftVersions, newVersion];
+    saveDraftVersionsToStorage(articleId, nextVersions);
+
+    const draftKey = `mobi_draft_${articleId}`;
+    try {
+      localStorage.setItem(draftKey, content);
+    } catch {
+      // ignore
+    }
+
+    return newVersion;
+  },
+
+  getDraftVersions: (articleId) => {
+    const versions = loadDraftVersionsFromStorage(articleId);
+    return versions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  getDraftVersionById: (articleId, versionId) => {
+    const versions = loadDraftVersionsFromStorage(articleId);
+    return versions.find((v) => v.id === versionId) || null;
+  },
+
+  restoreDraftVersion: (articleId, versionId) => {
+    const version = get().getDraftVersionById(articleId, versionId);
+    if (!version) return null;
+    return version;
   },
 }));

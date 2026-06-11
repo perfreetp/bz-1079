@@ -6,6 +6,8 @@ import { useMaterialStore } from '@/store/materialStore';
 import { useArticleStore } from '@/store/articleStore';
 import { useToast } from '@/components/ui/Toast';
 import TagPill from '@/components/ui/TagPill';
+import ArticleSelectorModal from '@/components/ui/ArticleSelectorModal';
+import InsertSuccessModal from '@/components/ui/InsertSuccessModal';
 
 interface ReferenceListProps {
   materials: Material[];
@@ -26,9 +28,15 @@ export default function ReferenceList({ materials }: ReferenceListProps) {
   const [newTitle, setNewTitle] = useState('');
   const [newSource, setNewSource] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [showInsertModal, setShowInsertModal] = useState(false);
+  const [insertingRef, setInsertingRef] = useState<ReferenceItem | null>(null);
+  const [insertTitle, setInsertTitle] = useState('');
+  const [insertSource, setInsertSource] = useState('');
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successArticleId, setSuccessArticleId] = useState('');
 
   const { addReference, deleteMaterial } = useMaterialStore();
-  const { appendDraftContent } = useArticleStore();
+  const { appendDraftContent, setLastEditedArticleId } = useArticleStore();
   const { showToast } = useToast();
 
   const references: ReferenceItem[] = materials
@@ -62,8 +70,22 @@ export default function ReferenceList({ materials }: ReferenceListProps) {
   };
 
   const handleInsert = (item: ReferenceItem) => {
-    appendDraftContent('a001', `\n\n> ${item.title}\n> —— ${item.source || '来自网络'}\n`);
-    showToast(`已插入引用「${item.title}」`, 'success');
+    setInsertingRef(item);
+    setInsertTitle(item.title);
+    setInsertSource(item.source || '');
+    setShowInsertModal(true);
+  };
+
+  const handleConfirmInsert = (articleId: string) => {
+    if (!insertingRef) return;
+    const sourceText = insertSource || '来自网络';
+    const markdown = `\n\n> ${insertTitle}\n> —— ${sourceText}\n`;
+    appendDraftContent(articleId, markdown);
+    setLastEditedArticleId(articleId);
+    setShowInsertModal(false);
+    setInsertingRef(null);
+    setSuccessArticleId(articleId);
+    setShowSuccessModal(true);
   };
 
   return (
@@ -248,6 +270,57 @@ export default function ReferenceList({ materials }: ReferenceListProps) {
           </div>
         </div>
       )}
+
+      <ArticleSelectorModal
+        open={showInsertModal}
+        onClose={() => {
+          setShowInsertModal(false);
+          setInsertingRef(null);
+        }}
+        onSelect={handleConfirmInsert}
+        title="插入引用"
+        confirmText="确认插入"
+      >
+        <div>
+          <h4 className="text-sm font-semibold text-ink-700 mb-3">即将插入的内容</h4>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-ink-500 mb-1.5">引用标题</label>
+              <input
+                type="text"
+                value={insertTitle}
+                onChange={(e) => setInsertTitle(e.target.value)}
+                placeholder="请输入引用标题"
+                className="w-full px-3 py-2 text-sm border border-paper-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-vermilion/30 focus:border-vermilion"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-ink-500 mb-1.5">来源</label>
+              <input
+                type="text"
+                value={insertSource}
+                onChange={(e) => setInsertSource(e.target.value)}
+                placeholder="请输入来源"
+                className="w-full px-3 py-2 text-sm border border-paper-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-vermilion/30 focus:border-vermilion"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-ink-500 mb-1.5">Markdown 预览</label>
+              <div className="p-4 bg-paper-100 rounded-lg text-sm text-ink-600 italic border-l-4 border-gold-400">
+                <p>{insertTitle || '引用标题'}</p>
+                <p className="mt-2 text-ink-500">—— {insertSource || '来源'}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </ArticleSelectorModal>
+
+      <InsertSuccessModal
+        open={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        articleId={successArticleId}
+        message="引用已成功插入到"
+      />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { GitBranch, Plus, GitCompare, RotateCcw, CheckCircle2, X } from 'lucide-react';
+import { GitBranch, Plus, GitCompare, RotateCcw, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { Version } from '@/types';
+import type { Version, VersionSource } from '@/types';
 
 type VersionType = 'draft' | 'review' | 'major' | 'minor';
 
@@ -20,6 +20,12 @@ const typeConfig: Record<VersionType, { color: string; bg: string; label: string
   minor: { color: 'text-gold-500', bg: 'bg-gold-300', label: '修订' },
   review: { color: 'text-moss-500', bg: 'bg-moss-300', label: '审核' },
   major: { color: 'text-vermilion-500', bg: 'bg-vermilion-400', label: '主版本' },
+};
+
+const sourceConfig: Record<VersionSource, { label: string; bg: string; text: string; icon: React.ComponentType<{ className?: string }> }> = {
+  manual: { label: '手动保存', bg: 'bg-ink-100', text: 'text-ink-600', icon: CheckCircle2 },
+  review_apply: { label: '审核应用', bg: 'bg-moss-100', text: 'text-moss-700', icon: ShieldCheck },
+  auto_save: { label: '自动保存', bg: 'bg-gold-100', text: 'text-gold-700', icon: CheckCircle2 },
 };
 
 function formatDate(isoString: string): string {
@@ -139,6 +145,21 @@ export default function VersionTimeline({ versions, onSaveVersion }: VersionTime
                           {version.isCurrent && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-vermilion-500 text-white font-medium">
                               当前
+                            </span>
+                          )}
+                          {version.source && sourceConfig[version.source] && (
+                            <span
+                              className={cn(
+                                'inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-medium',
+                                sourceConfig[version.source].bg,
+                                sourceConfig[version.source].text
+                              )}
+                            >
+                              {(() => {
+                                const SourceIcon = sourceConfig[version.source].icon;
+                                return <SourceIcon className="w-3 h-3" />;
+                              })()}
+                              {sourceConfig[version.source].label}
                             </span>
                           )}
                         </div>

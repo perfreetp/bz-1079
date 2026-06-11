@@ -61,6 +61,8 @@ export interface BrandTerm {
   description?: string;
 }
 
+export type VersionSource = 'manual' | 'review_apply' | 'auto_save';
+
 export interface Version {
   id: string;
   articleId: string;
@@ -69,6 +71,20 @@ export interface Version {
   note: string;
   author: string;
   createdAt: string;
+  source?: VersionSource;
+}
+
+export type DraftVersionSource = 'manual' | 'ai_tone' | 'ai_expand' | 'ai_golden' | 'material_insert' | 'review_apply';
+
+export interface DraftVersion {
+  id: string;
+  articleId: string;
+  versionNumber: number;
+  content: string;
+  note: string;
+  createdAt: string;
+  wordCount: number;
+  source?: DraftVersionSource;
 }
 
 export interface Comment {
@@ -147,6 +163,19 @@ export interface Task {
 }
 
 export type AITone = 'formal' | 'casual' | 'professional' | 'literary';
+
+export type AIOperationType = 'tone' | 'expand' | 'golden' | 'polish';
+
+export interface AIOperation {
+  id: string;
+  type: AIOperationType;
+  label: string;
+  position: number;
+  length: number;
+  oldText: string;
+  newText: string;
+  timestamp: string;
+}
 
 export interface DailyMetric {
   date: string;

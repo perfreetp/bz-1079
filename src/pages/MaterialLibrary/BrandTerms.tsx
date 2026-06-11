@@ -5,6 +5,8 @@ import type { BrandTerm, BrandTermCategory } from '@/types';
 import { useMaterialStore } from '@/store/materialStore';
 import { useArticleStore } from '@/store/articleStore';
 import { useToast } from '@/components/ui/Toast';
+import ArticleSelectorModal from '@/components/ui/ArticleSelectorModal';
+import InsertSuccessModal from '@/components/ui/InsertSuccessModal';
 
 interface BrandTermsProps {
   brandTerms: BrandTerm[];
@@ -26,9 +28,13 @@ export default function BrandTerms({ brandTerms }: BrandTermsProps) {
   const [newReplacement, setNewReplacement] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [showInsertModal, setShowInsertModal] = useState(false);
+  const [insertingTerm, setInsertingTerm] = useState<BrandTerm | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successArticleId, setSuccessArticleId] = useState('');
 
   const { addBrandTerm, deleteBrandTerm } = useMaterialStore();
-  const { appendDraftContent } = useArticleStore();
+  const { appendDraftContent, setLastEditedArticleId } = useArticleStore();
   const { showToast } = useToast();
 
   const filteredTerms =
@@ -78,12 +84,24 @@ export default function BrandTerms({ brandTerms }: BrandTermsProps) {
   };
 
   const handleInsert = (term: BrandTerm) => {
-    if (term.isForbidden) {
-      appendDraftContent('a001', `**【${term.replacement || term.term}】**`);
+    setInsertingTerm(term);
+    setShowInsertModal(true);
+  };
+
+  const handleConfirmInsert = (articleId: string) => {
+    if (!insertingTerm) return;
+    let text: string;
+    if (insertingTerm.isForbidden) {
+      text = `**【${insertingTerm.replacement || insertingTerm.term}】**`;
     } else {
-      appendDraftContent('a001', term.term);
+      text = insertingTerm.term;
     }
-    showToast(`已插入品牌词「${term.term}」`, 'success');
+    appendDraftContent(articleId, text);
+    setLastEditedArticleId(articleId);
+    setShowInsertModal(false);
+    setInsertingTerm(null);
+    setSuccessArticleId(articleId);
+    setShowSuccessModal(true);
   };
 
   const getCardBorderClass = (term: BrandTerm) => {
@@ -355,6 +373,72 @@ export default function BrandTerms({ brandTerms }: BrandTermsProps) {
           </div>
         </div>
       )}
+
+      <ArticleSelectorModal
+        open={showInsertModal}
+        onClose={() => {
+          setShowInsertModal(false);
+          setInsertingTerm(null);
+        }}
+        onSelect={handleConfirmInsert}
+        title="插入品牌词"
+        confirmText="确认插入"
+      >
+        <div>
+          <h4 className="text-sm font-semibold text-ink-700 mb-3">即将插入的内容</h4>
+          {insertingTerm && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    'text-xs px-2 py-0.5 rounded-full font-medium',
+                    getCategoryBadgeClass(insertingTerm.category)
+                  )}
+                >
+                  {getCategoryLabel(insertingTerm.category)}
+                </span>
+                <span
+                  className={cn(
+                    'text-sm font-semibold',
+                    insertingTerm.isForbidden ? 'text-vermilion-600 line-through' : 'text-ink-800'
+                  )}
+                >
+                  {insertingTerm.term}
+                </span>
+              </div>
+              {insertingTerm.description && (
+                <p className="text-xs text-ink-500">{insertingTerm.description}</p>
+              )}
+              {insertingTerm.replacement && (
+                <div className="flex items-center gap-1.5 text-sm">
+                  <span className="text-ink-400 text-xs">替换建议：</span>
+                  <ArrowRight className="w-3 h-3 text-moss-500" />
+                  <span className="text-moss-600 font-medium text-sm">{insertingTerm.replacement}</span>
+                </div>
+              )}
+              <div className="pt-2">
+                <label className="block text-xs font-medium text-ink-500 mb-1.5">插入效果预览</label>
+                <div className="p-3 bg-paper-100 rounded-lg text-sm text-ink-700">
+                  {insertingTerm.isForbidden ? (
+                    <span className="font-bold text-vermilion-600">
+                      【{insertingTerm.replacement || insertingTerm.term}】
+                    </span>
+                  ) : (
+                    <span>{insertingTerm.term}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </ArticleSelectorModal>
+
+      <InsertSuccessModal
+        open={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        articleId={successArticleId}
+        message="品牌词已成功插入到"
+      />
     </div>
   );
 }
