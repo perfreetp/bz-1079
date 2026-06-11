@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useState, ReactNode } from 'react';
-import { CheckCircle2, XCircle, Info, X } from 'lucide-react';
+import { CheckCircle2, XCircle, Info, AlertTriangle, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type ToastType = 'success' | 'error' | 'info';
+type ToastType = 'success' | 'error' | 'info' | 'warning';
 
 interface ToastItem {
   id: string;
@@ -37,6 +37,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         return 'bg-moss-50 border-moss-200 text-moss-700';
       case 'error':
         return 'bg-vermilion-50 border-vermilion-200 text-vermilion-700';
+      case 'warning':
+        return 'bg-amber-50 border-amber-200 text-amber-700';
       default:
         return 'bg-paper border-paper-200 text-ink-700';
     }
@@ -48,6 +50,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         return <CheckCircle2 className="w-5 h-5 text-moss-500 shrink-0" />;
       case 'error':
         return <XCircle className="w-5 h-5 text-vermilion-500 shrink-0" />;
+      case 'warning':
+        return <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />;
       default:
         return <Info className="w-5 h-5 text-ink-400 shrink-0" />;
     }

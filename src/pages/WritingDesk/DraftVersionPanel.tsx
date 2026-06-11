@@ -19,15 +19,23 @@ const sourceLabels: Record<DraftVersionSource, string> = {
   ai_golden: '金句插入',
   material_insert: '素材插入',
   review_apply: '审核应用',
+  restore_backup: '恢复前备份',
+  restore: '已恢复',
+  ai_undo: 'AI 撤销',
+  auto_save: '自动保存',
 };
 
 const sourceColors: Record<DraftVersionSource, string> = {
   manual: 'bg-ink-100 text-ink-600',
-  ai_tone: 'bg-vermilion-50 text-vermilion',
+  ai_tone: 'bg-vermilion-50 text-vermilion-700',
   ai_expand: 'bg-moss-50 text-moss-600',
   ai_golden: 'bg-gold-50 text-gold-600',
   material_insert: 'bg-blue-50 text-blue-600',
-  review_apply: 'bg-purple-50 text-purple-600',
+  review_apply: 'bg-moss-50 text-moss-600',
+  restore_backup: 'bg-ink-100 text-ink-500',
+  restore: 'bg-moss-50 text-moss-600',
+  ai_undo: 'bg-orange-50 text-orange-600',
+  auto_save: 'bg-ink-100 text-ink-500',
 };
 
 export default function DraftVersionPanel({

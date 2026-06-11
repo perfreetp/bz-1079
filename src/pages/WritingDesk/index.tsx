@@ -1,15 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import type { OutlineSection, AITone, AIOperation, AIOperationType, DraftVersion, DraftVersionSource } from '@/types';
+import type { OutlineSection, AITone, AIOperation, AIOperationType, DraftVersion, DraftVersionSource, Comment } from '@/types';
 import RichEditor from './RichEditor';
 import AIToolbox from './AIToolbox';
 import AIOperationHistory from './AIOperationHistory';
 import DraftVersionPanel from './DraftVersionPanel';
 import DraftDiffModal from './DraftDiffModal';
+import DraftComments from './DraftComments';
 import WritingProgress from './WritingProgress';
 import { useArticleStore } from '@/store/articleStore';
 import { cn } from '@/lib/utils';
-import { PenLine, ChevronLeft, ChevronRight, BookOpen, CheckCircle, GitBranch, Save, RotateCcw, AlertTriangle, X } from 'lucide-react';
+import { PenLine, ChevronLeft, ChevronRight, BookOpen, CheckCircle, GitBranch, Save, RotateCcw, AlertTriangle, X, Sparkles, Users } from 'lucide-react';
 
 const mockOutline: OutlineSection[] = [
   {
@@ -180,15 +181,17 @@ export default function WritingDesk() {
       if (appended && appended.length > 0) {
         baseContent = baseContent + appended;
         localStorage.removeItem(appendStorageKey);
+        setTimeout(() => setMaterialInserted(true), 0);
       }
       return baseContent;
     } catch {
       return sampleContent;
     }
   });
+  const [materialInserted, setMaterialInserted] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
-  const { saveDraftVersion, getDraftVersions } = useArticleStore();
+  const { saveDraftVersion, getDraftVersions, addComment, resolveComment, toggleTodo, getCommentsByArticleId, setLastEditedArticleId } = useArticleStore();
   const opsStorageKey = `mobi_ai_ops_${articleId}`;
   const MAX_OPERATIONS = 20;
 
@@ -211,6 +214,8 @@ export default function WritingDesk() {
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [versionToRestore, setVersionToRestore] = useState<DraftVersion | null>(null);
   const [draftVersions, setDraftVersions] = useState<DraftVersion[]>([]);
+  const [rightTab, setRightTab] = useState<'ai' | 'collab'>('ai');
+  const [selectedText, setSelectedText] = useState('');
 
   const refreshDraftVersions = useCallback(() => {
     setDraftVersions(getDraftVersions(articleId));
@@ -221,6 +226,10 @@ export default function WritingDesk() {
     setShowToast(true);
     setTimeout(() => setShowToast(false), 2500);
   }, []);
+
+  useEffect(() => {
+    setLastEditedArticleId(articleId);
+  }, [articleId, setLastEditedArticleId]);
 
   useEffect(() => {
     try {
@@ -279,10 +288,16 @@ export default function WritingDesk() {
     setAiOperations((prev) => prev.filter((o) => o.id !== opId));
     showToastMessage(`已撤销「${op.label}」`);
 
+    const undoNote = `撤销 AI 操作：${op.label}`;
+    setTimeout(() => {
+      saveDraftVersion(articleId, newContent, undoNote, 'ai_undo');
+      refreshDraftVersions();
+    }, 0);
+
     setTimeout(() => {
       handleJumpTo(op.position);
     }, 50);
-  }, [aiOperations, content, showToastMessage, handleJumpTo]);
+  }, [aiOperations, content, showToastMessage, handleJumpTo, articleId, saveDraftVersion, refreshDraftVersions]);
 
   const handleUndoLatest = useCallback(() => {
     const sortedOps = [...aiOperations].sort(
@@ -302,12 +317,26 @@ export default function WritingDesk() {
       if (appended && appended.length > 0) {
         baseContent = baseContent + appended;
         localStorage.removeItem(appendStorageKey);
+        setMaterialInserted(true);
       }
       setContent(baseContent);
     } catch {
       // ignore
     }
   }, [storageKey, appendStorageKey]);
+
+  useEffect(() => {
+    const updateSelection = () => {
+      const ta = textareaRef.current;
+      if (ta && ta.selectionStart !== ta.selectionEnd) {
+        setSelectedText(ta.value.slice(ta.selectionStart, ta.selectionEnd));
+      } else {
+        setSelectedText('');
+      }
+    };
+    document.addEventListener('selectionchange', updateSelection);
+    return () => document.removeEventListener('selectionchange', updateSelection);
+  }, []);
 
   const onApplyTone = useCallback((tone: AITone, _selectedText?: string): string => {
     const ta = textareaRef.current;
@@ -517,11 +546,14 @@ export default function WritingDesk() {
   const confirmRestore = useCallback(() => {
     if (!versionToRestore) return;
 
-    const preRestoreNote = `恢复前的版本（恢复到第 ${versionToRestore.versionNumber} 版前）`;
-    saveDraftVersion(articleId, content, preRestoreNote, 'manual');
+    const preRestoreNote = '恢复前自动备份';
+    saveDraftVersion(articleId, content, preRestoreNote, 'restore_backup');
 
     setContent(versionToRestore.content);
     localStorage.setItem(storageKey, versionToRestore.content);
+
+    const restoreNote = `恢复到第 ${versionToRestore.versionNumber} 版：${versionToRestore.note || '无备注'}`;
+    saveDraftVersion(articleId, versionToRestore.content, restoreNote, 'restore');
 
     showToastMessage(`已恢复到第 ${versionToRestore.versionNumber} 版`);
     setShowRestoreConfirm(false);
@@ -534,6 +566,25 @@ export default function WritingDesk() {
   useEffect(() => {
     refreshDraftVersions();
   }, [refreshDraftVersions]);
+
+  useEffect(() => {
+    if (materialInserted) {
+      saveDraftVersion(articleId, content, '插入素材：来自素材库', 'material_insert');
+      refreshDraftVersions();
+      setMaterialInserted(false);
+    }
+  }, [materialInserted, articleId, content, saveDraftVersion, refreshDraftVersions]);
+
+  useEffect(() => {
+    const versions = getDraftVersions(articleId);
+    if (versions.length > 0) {
+      const latestVersion = versions[0];
+      if (latestVersion.content !== content) {
+        saveDraftVersion(articleId, content, '未保存变更', 'auto_save');
+        refreshDraftVersions();
+      }
+    }
+  }, []);
 
   return (
     <div className="h-screen bg-paper-100 flex flex-col overflow-hidden relative">
@@ -633,19 +684,66 @@ export default function WritingDesk() {
           />
         </main>
 
-        <aside className="w-72 bg-white border-l border-ink-100 overflow-y-auto flex-shrink-0">
-          <AIToolbox
-            onApplyTone={onApplyTone}
-            onExpand={onExpand}
-            onInsertGolden={onInsertGolden}
-            onPolish={onPolish}
-          />
-          <AIOperationHistory
-            operations={aiOperations}
-            onJumpTo={handleJumpTo}
-            onUndo={handleUndo}
-            onUndoLatest={handleUndoLatest}
-          />
+        <aside className="w-72 bg-white border-l border-ink-100 flex flex-col overflow-hidden flex-shrink-0">
+          <div className="flex border-b border-ink-100 flex-shrink-0">
+            <button
+              onClick={() => setRightTab('ai')}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-medium transition-colors relative',
+                rightTab === 'ai'
+                  ? 'text-vermilion'
+                  : 'text-ink-400 hover:text-ink-600'
+              )}
+            >
+              <Sparkles className="w-4 h-4" />
+              AI工具
+              {rightTab === 'ai' && (
+                <span className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-vermilion rounded-full" />
+              )}
+            </button>
+            <button
+              onClick={() => setRightTab('collab')}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-medium transition-colors relative',
+                rightTab === 'collab'
+                  ? 'text-vermilion'
+                  : 'text-ink-400 hover:text-ink-600'
+              )}
+            >
+              <Users className="w-4 h-4" />
+              协作
+              {rightTab === 'collab' && (
+                <span className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-vermilion rounded-full" />
+              )}
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {rightTab === 'ai' ? (
+              <>
+                <AIToolbox
+                  onApplyTone={onApplyTone}
+                  onExpand={onExpand}
+                  onInsertGolden={onInsertGolden}
+                  onPolish={onPolish}
+                />
+                <AIOperationHistory
+                  operations={aiOperations}
+                  onJumpTo={handleJumpTo}
+                  onUndo={handleUndo}
+                  onUndoLatest={handleUndoLatest}
+                />
+              </>
+            ) : (
+              <DraftComments
+                comments={getCommentsByArticleId(articleId)}
+                articleId={articleId}
+                selectedText={selectedText}
+                onAddComment={(comment) => addComment(comment)}
+                onResolveComment={resolveComment}
+                onToggleTodo={toggleTodo}
+              />
+            )}
+          </div>
         </aside>
       </div>
 

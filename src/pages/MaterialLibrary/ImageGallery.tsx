@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Pencil, Trash2, Plus, Upload, X, Image } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Material } from '@/types';
@@ -6,7 +7,6 @@ import { useMaterialStore } from '@/store/materialStore';
 import { useArticleStore } from '@/store/articleStore';
 import { useToast } from '@/components/ui/Toast';
 import ArticleSelectorModal from '@/components/ui/ArticleSelectorModal';
-import InsertSuccessModal from '@/components/ui/InsertSuccessModal';
 
 interface ImageGalleryProps {
   materials: Material[];
@@ -31,11 +31,10 @@ export default function ImageGallery({ materials }: ImageGalleryProps) {
   const [showInsertModal, setShowInsertModal] = useState(false);
   const [insertingImage, setInsertingImage] = useState<Material | null>(null);
   const [insertCaption, setInsertCaption] = useState('');
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [successArticleId, setSuccessArticleId] = useState('');
 
+  const navigate = useNavigate();
   const { addMaterial, deleteMaterial, updateMaterial } = useMaterialStore();
-  const { appendDraftContent, setLastEditedArticleId } = useArticleStore();
+  const { appendDraftContent, setLastEditedArticleId, logMaterialInsert, getArticleById } = useArticleStore();
   const { showToast } = useToast();
 
   const images = materials.filter((m) => m.type === 'image');
@@ -91,10 +90,12 @@ export default function ImageGallery({ materials }: ImageGalleryProps) {
     const markdown = `\n\n![${insertCaption}](${insertingImage.imageUrl})\n`;
     appendDraftContent(articleId, markdown);
     setLastEditedArticleId(articleId);
+    logMaterialInsert(articleId, insertingImage.id, 'image', markdown, 0, insertingImage.title);
     setShowInsertModal(false);
     setInsertingImage(null);
-    setSuccessArticleId(articleId);
-    setShowSuccessModal(true);
+    const article = getArticleById(articleId);
+    showToast(`已插入「${insertingImage.title}」到《${article?.title || '未知文章'}》`, 'success');
+    navigate(`/write/${articleId}`);
   };
 
   return (
@@ -336,13 +337,6 @@ export default function ImageGallery({ materials }: ImageGalleryProps) {
           </div>
         </div>
       </ArticleSelectorModal>
-
-      <InsertSuccessModal
-        open={showSuccessModal}
-        onClose={() => setShowSuccessModal(false)}
-        articleId={successArticleId}
-        message="图片已成功插入到"
-      />
     </div>
   );
 }

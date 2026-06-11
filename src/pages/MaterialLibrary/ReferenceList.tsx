@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus, Link2, Quote, ExternalLink, Trash2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Material } from '@/types';
@@ -7,7 +8,6 @@ import { useArticleStore } from '@/store/articleStore';
 import { useToast } from '@/components/ui/Toast';
 import TagPill from '@/components/ui/TagPill';
 import ArticleSelectorModal from '@/components/ui/ArticleSelectorModal';
-import InsertSuccessModal from '@/components/ui/InsertSuccessModal';
 
 interface ReferenceListProps {
   materials: Material[];
@@ -32,11 +32,10 @@ export default function ReferenceList({ materials }: ReferenceListProps) {
   const [insertingRef, setInsertingRef] = useState<ReferenceItem | null>(null);
   const [insertTitle, setInsertTitle] = useState('');
   const [insertSource, setInsertSource] = useState('');
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [successArticleId, setSuccessArticleId] = useState('');
 
+  const navigate = useNavigate();
   const { addReference, deleteMaterial } = useMaterialStore();
-  const { appendDraftContent, setLastEditedArticleId } = useArticleStore();
+  const { appendDraftContent, setLastEditedArticleId, logMaterialInsert, getArticleById } = useArticleStore();
   const { showToast } = useToast();
 
   const references: ReferenceItem[] = materials
@@ -82,10 +81,12 @@ export default function ReferenceList({ materials }: ReferenceListProps) {
     const markdown = `\n\n> ${insertTitle}\n> —— ${sourceText}\n`;
     appendDraftContent(articleId, markdown);
     setLastEditedArticleId(articleId);
+    logMaterialInsert(articleId, insertingRef.id, 'quote', markdown, 0, insertingRef.title);
     setShowInsertModal(false);
     setInsertingRef(null);
-    setSuccessArticleId(articleId);
-    setShowSuccessModal(true);
+    const article = getArticleById(articleId);
+    showToast(`已插入「${insertingRef.title}」到《${article?.title || '未知文章'}》`, 'success');
+    navigate(`/write/${articleId}`);
   };
 
   return (
@@ -314,13 +315,6 @@ export default function ReferenceList({ materials }: ReferenceListProps) {
           </div>
         </div>
       </ArticleSelectorModal>
-
-      <InsertSuccessModal
-        open={showSuccessModal}
-        onClose={() => setShowSuccessModal(false)}
-        articleId={successArticleId}
-        message="引用已成功插入到"
-      />
     </div>
   );
 }

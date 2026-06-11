@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Article, Task, OutlineSection, TitleOption, ReviewIssue, Version, Comment, ResolvedType, VersionSource, DraftVersion, DraftVersionSource } from '@/types';
+import type { Article, Task, OutlineSection, TitleOption, ReviewIssue, Version, Comment, ResolvedType, VersionSource, DraftVersion, DraftVersionSource, InsertedMaterial } from '@/types';
 import { articles, tasks } from '@/data/articles';
 import { outlineSections, titleOptions, reviewIssues as defaultReviewIssues, versions as initialVersions, comments as initialComments } from '@/data/materials';
 
@@ -147,6 +147,7 @@ interface ArticleStore {
   resolveComment: (id: string) => void;
   getCommentsByArticleId: (articleId: string) => Comment[];
   addReply: (parentId: string, reply: Comment) => void;
+  toggleTodo: (id: string) => void;
   loadIssuesForArticle: (articleId: string) => ReviewIssue[];
   appendDraftContent: (articleId: string, text: string) => void;
   getDraftContent: (articleId: string) => string;
@@ -155,6 +156,8 @@ interface ArticleStore {
   getDraftVersionById: (articleId: string, versionId: string) => DraftVersion | null;
   restoreDraftVersion: (articleId: string, versionId: string) => DraftVersion | null;
   setDraftContent: (articleId: string, content: string) => void;
+  logMaterialInsert: (articleId: string, materialId: string, materialType: 'image' | 'quote' | 'brand', content: string, position: number, title: string) => void;
+  getInsertedMaterials: (articleId: string) => InsertedMaterial[];
 }
 
 const getArticleIdByIssueId = (issues: ReviewIssue[], issueId: string): string | null => {
@@ -339,6 +342,24 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
       }),
     })),
 
+  toggleTodo: (id) =>
+    set((state) => ({
+      comments: state.comments.map((c) => {
+        if (c.id === id) {
+          return { ...c, completed: !c.completed };
+        }
+        if (c.replies && c.replies.length > 0) {
+          return {
+            ...c,
+            replies: c.replies.map((r) =>
+              r.id === id ? { ...r, completed: !r.completed } : r
+            ),
+          };
+        }
+        return c;
+      }),
+    })),
+
   loadIssuesForArticle: (articleId) => {
     const state = get();
     let articleIssues = state.reviewIssues.filter((i) => i.articleId === articleId);
@@ -433,5 +454,37 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
     const version = get().getDraftVersionById(articleId, versionId);
     if (!version) return null;
     return version;
+  },
+
+  logMaterialInsert: (articleId, materialId, materialType, content, position, title) => {
+    const key = `mobi_insert_log_${articleId}`;
+    try {
+      const raw = localStorage.getItem(key);
+      const logs: InsertedMaterial[] = raw ? JSON.parse(raw) : [];
+      const entry: InsertedMaterial = {
+        id: `im-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        articleId,
+        materialId,
+        materialType,
+        content,
+        position,
+        insertedAt: new Date().toISOString(),
+        title,
+      };
+      logs.push(entry);
+      localStorage.setItem(key, JSON.stringify(logs));
+    } catch {
+      // ignore
+    }
+  },
+
+  getInsertedMaterials: (articleId) => {
+    const key = `mobi_insert_log_${articleId}`;
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) as InsertedMaterial[] : [];
+    } catch {
+      return [];
+    }
   },
 }));

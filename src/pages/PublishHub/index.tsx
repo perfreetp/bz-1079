@@ -105,6 +105,7 @@ export default function PublishHub() {
     resolveComment,
     addReply,
     getCommentsByArticleId,
+    toggleTodo,
   } = useArticleStore();
 
   const article = getArticleById(DEFAULT_ARTICLE_ID);
@@ -254,6 +255,7 @@ export default function PublishHub() {
                 onAddComment={handleAddComment}
                 onAddReply={handleAddReply}
                 onResolve={handleResolveComment}
+                onToggleTodo={toggleTodo}
               />
             </div>
           </div>

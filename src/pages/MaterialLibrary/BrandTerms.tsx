@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus, Package, Megaphone, Ban, MessageSquare, Trash2, ArrowRight, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { BrandTerm, BrandTermCategory } from '@/types';
@@ -6,7 +7,6 @@ import { useMaterialStore } from '@/store/materialStore';
 import { useArticleStore } from '@/store/articleStore';
 import { useToast } from '@/components/ui/Toast';
 import ArticleSelectorModal from '@/components/ui/ArticleSelectorModal';
-import InsertSuccessModal from '@/components/ui/InsertSuccessModal';
 
 interface BrandTermsProps {
   brandTerms: BrandTerm[];
@@ -30,11 +30,10 @@ export default function BrandTerms({ brandTerms }: BrandTermsProps) {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [showInsertModal, setShowInsertModal] = useState(false);
   const [insertingTerm, setInsertingTerm] = useState<BrandTerm | null>(null);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [successArticleId, setSuccessArticleId] = useState('');
 
+  const navigate = useNavigate();
   const { addBrandTerm, deleteBrandTerm } = useMaterialStore();
-  const { appendDraftContent, setLastEditedArticleId } = useArticleStore();
+  const { appendDraftContent, setLastEditedArticleId, logMaterialInsert, getArticleById } = useArticleStore();
   const { showToast } = useToast();
 
   const filteredTerms =
@@ -98,10 +97,12 @@ export default function BrandTerms({ brandTerms }: BrandTermsProps) {
     }
     appendDraftContent(articleId, text);
     setLastEditedArticleId(articleId);
+    logMaterialInsert(articleId, insertingTerm.id, 'brand', text, 0, insertingTerm.term);
     setShowInsertModal(false);
     setInsertingTerm(null);
-    setSuccessArticleId(articleId);
-    setShowSuccessModal(true);
+    const article = getArticleById(articleId);
+    showToast(`已插入「${insertingTerm.term}」到《${article?.title || '未知文章'}》`, 'success');
+    navigate(`/write/${articleId}`);
   };
 
   const getCardBorderClass = (term: BrandTerm) => {
@@ -432,13 +433,6 @@ export default function BrandTerms({ brandTerms }: BrandTermsProps) {
           )}
         </div>
       </ArticleSelectorModal>
-
-      <InsertSuccessModal
-        open={showSuccessModal}
-        onClose={() => setShowSuccessModal(false)}
-        articleId={successArticleId}
-        message="品牌词已成功插入到"
-      />
     </div>
   );
 }

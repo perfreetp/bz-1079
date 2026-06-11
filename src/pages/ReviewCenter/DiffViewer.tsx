@@ -13,6 +13,64 @@ const typeLabels: Record<IssueType, string> = {
   compliance: '广告合规',
 };
 
+type MatchType = 'exact_position' | 'exact_text' | 'fuzzy' | 'not_found';
+
+interface MatchResult {
+  matched: boolean;
+  position: number;
+  matchType: MatchType;
+}
+
+function matchByPosition(content: string, issue: ReviewIssue): { matched: boolean; actualPosition?: number } {
+  const start = issue.position;
+  const end = start + issue.originalText.length;
+  if (start >= 0 && end <= content.length && content.slice(start, end) === issue.originalText) {
+    return { matched: true, actualPosition: start };
+  }
+  return { matched: false };
+}
+
+function matchByText(content: string, issue: ReviewIssue): { matched: boolean; actualPosition?: number } {
+  if (!issue.originalText || issue.originalText.length === 0) return { matched: false };
+
+  const idx = content.indexOf(issue.originalText);
+  if (idx !== -1) {
+    return { matched: true, actualPosition: idx };
+  }
+
+  const text = issue.originalText;
+  const prefixLen = Math.min(10, Math.floor(text.length / 2));
+  if (prefixLen === 0) return { matched: false };
+
+  const prefix = text.slice(0, prefixLen);
+  const suffix = text.slice(-prefixLen);
+
+  let pos = 0;
+  while ((pos = content.indexOf(prefix, pos)) !== -1) {
+    const endPos = pos + text.length;
+    if (endPos <= content.length && content.slice(endPos - prefixLen, endPos) === suffix) {
+      return { matched: true, actualPosition: pos };
+    }
+    pos++;
+  }
+
+  return { matched: false };
+}
+
+function findIssuePosition(content: string, issue: ReviewIssue): MatchResult {
+  const posMatch = matchByPosition(content, issue);
+  if (posMatch.matched) {
+    return { matched: true, position: posMatch.actualPosition!, matchType: 'exact_position' };
+  }
+
+  const textMatch = matchByText(content, issue);
+  if (textMatch.matched) {
+    return { matched: true, position: textMatch.actualPosition!, matchType: textMatch.actualPosition === issue.position ? 'exact_text' : 'fuzzy' };
+  }
+
+  return { matched: false, position: -1, matchType: 'not_found' };
+}
+
 interface DiffSegment {
   text: string;
   issue?: ReviewIssue;
@@ -55,6 +113,9 @@ export default function DiffViewer({
   const [showApplyConfirm, setShowApplyConfirm] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [hoveredIssueId, setHoveredIssueId] = useState<string | null>(null);
+  const [pendingMatchResults, setPendingMatchResults] = useState<
+    { issue: ReviewIssue; matched: boolean; position: number; matchType: MatchType }[]
+  >([]);
 
   const unresolvedCount = issues.filter((i) => !i.resolved).length;
   const acceptedCount = issues.filter((i) => i.resolved && i.resolvedType === 'accepted').length;
@@ -162,6 +223,19 @@ export default function DiffViewer({
   };
 
   const handleApplyToDraft = () => {
+    const acceptedIssues = issues.filter((i) => i.resolved && i.resolvedType === 'accepted');
+
+    let draftContent = getDraftContent(articleId);
+    if (!draftContent || draftContent.length === 0) {
+      draftContent = articleContent;
+    }
+
+    const matchResults = acceptedIssues.map((issue) => ({
+      issue,
+      ...findIssuePosition(draftContent, issue),
+    }));
+
+    setPendingMatchResults(matchResults);
     setShowApplyConfirm(true);
   };
 
@@ -169,30 +243,39 @@ export default function DiffViewer({
     setIsApplying(true);
 
     try {
-      const acceptedIssues = issues
-        .filter((i) => i.resolved && i.resolvedType === 'accepted')
-        .sort((a, b) => b.position - a.position);
+      const matched = pendingMatchResults.filter((r) => r.matched);
+      const unmatched = pendingMatchResults.filter((r) => !r.matched);
 
-      let originalContent = getDraftContent(articleId);
-      if (!originalContent || originalContent.length === 0) {
-        originalContent = articleContent;
+      if (matched.length === 0) {
+        showToast('所有修改均无法在草稿中定位，请手动处理', 'error');
+        setShowApplyConfirm(false);
+        return;
       }
 
-      let result = originalContent;
-      for (const issue of acceptedIssues) {
-        if (issue.position <= result.length) {
+      let draftContent = getDraftContent(articleId);
+      if (!draftContent || draftContent.length === 0) {
+        draftContent = articleContent;
+      }
+
+      let result = draftContent;
+      matched
+        .sort((a, b) => b.position - a.position)
+        .forEach(({ issue, position }) => {
           result =
-            result.slice(0, issue.position) +
+            result.slice(0, position) +
             (issue.suggestion || issue.originalText) +
-            result.slice(issue.position + issue.originalText.length);
-        }
-      }
+            result.slice(position + issue.originalText.length);
+        });
 
-      const note = `审核通过：已应用 ${acceptedCount} 处修改`;
+      const note = `审核通过：已应用 ${matched.length} 处修改${unmatched.length > 0 ? `，${unmatched.length} 处未匹配` : ''}`;
       saveDraftVersion(articleId, result, note, 'review_apply');
 
-      showToast('已应用审核修改，生成新草稿版本', 'success');
+      const toastMsg = `已应用 ${matched.length} 处修改到草稿${
+        unmatched.length > 0 ? `\n⚠️ ${unmatched.length} 处修改因草稿内容变更未能定位，请手动处理` : ''
+      }`;
+      showToast(toastMsg, unmatched.length > 0 ? 'warning' : 'success');
       setShowApplyConfirm(false);
+      setPendingMatchResults([]);
     } catch (error) {
       showToast('应用失败，请重试', 'error');
     } finally {
@@ -541,7 +624,7 @@ export default function DiffViewer({
 
       {showApplyConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="bg-paper rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-in zoom-in-95 duration-150">
+          <div className="bg-paper rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95 duration-150">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-moss-100 flex items-center justify-center shrink-0">
                 <CheckSquare className="w-5 h-5 text-moss-600" />
@@ -551,38 +634,93 @@ export default function DiffViewer({
                 <p className="text-xs text-ink-500">将生成新的草稿版本</p>
               </div>
             </div>
-            <div className="bg-paper-50 rounded-xl p-4 mb-5 space-y-2">
-              <p className="text-sm text-ink-600">
-                即将把 <span className="font-bold text-moss-600">{acceptedCount}</span> 处已接受的修改应用到草稿。
-              </p>
-              <p className="text-xs text-ink-400">会生成一个新的草稿版本，你可以在写作页查看。</p>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowApplyConfirm(false)}
-                disabled={isApplying}
-                className="flex-1 px-4 py-2.5 text-sm font-medium text-ink-600 bg-paper-100 rounded-xl hover:bg-paper-200 transition-colors disabled:opacity-50"
-              >
-                取消
-              </button>
-              <button
-                onClick={handleConfirmApply}
-                disabled={isApplying}
-                className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-moss-600 rounded-xl hover:bg-moss-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
-              >
-                {isApplying ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    应用中...
-                  </>
-                ) : (
-                  <>
-                    确认应用
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            </div>
+            {(() => {
+              const matchedCount = pendingMatchResults.filter((r) => r.matched).length;
+              const unmatchedResults = pendingMatchResults.filter((r) => !r.matched);
+              const hasUnmatched = unmatchedResults.length > 0;
+
+              return (
+                <>
+                  <div className="bg-paper-50 rounded-xl p-4 mb-4 space-y-2">
+                    <p className="text-sm text-ink-600">
+                      {hasUnmatched ? (
+                        <>
+                          将应用 <span className="font-bold text-moss-600">{matchedCount}</span> 处修改到草稿
+                          {unmatchedResults.length > 0 && (
+                            <span className="text-amber-600">，{unmatchedResults.length} 处无法定位</span>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          即将把 <span className="font-bold text-moss-600">{matchedCount}</span> 处已接受的修改应用到草稿。
+                        </>
+                      )}
+                    </p>
+                    <p className="text-xs text-ink-400">会生成一个新的草稿版本，你可以在写作页查看。</p>
+                  </div>
+
+                  {hasUnmatched && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-5">
+                      <div className="flex items-center gap-2 mb-3">
+                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span className="text-sm font-semibold text-amber-700">以下修改未能定位</span>
+                      </div>
+                      <div className="space-y-2 max-h-40 overflow-y-auto">
+                        {unmatchedResults.map(({ issue }) => (
+                          <div key={issue.id} className="flex items-start gap-2 text-xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1.5 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-ink-700 font-medium truncate">{issue.originalText}</p>
+                              <p className="text-ink-400">草稿中未找到对应文本</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        setShowApplyConfirm(false);
+                        setPendingMatchResults([]);
+                      }}
+                      disabled={isApplying}
+                      className="flex-1 px-4 py-2.5 text-sm font-medium text-ink-600 bg-paper-100 rounded-xl hover:bg-paper-200 transition-colors disabled:opacity-50"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={handleConfirmApply}
+                      disabled={isApplying || matchedCount === 0}
+                      className={cn(
+                        'flex-1 px-4 py-2.5 text-sm font-medium rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5',
+                        hasUnmatched
+                          ? 'bg-amber-500 text-white hover:bg-amber-600'
+                          : 'bg-moss-600 text-white hover:bg-moss-700'
+                      )}
+                    >
+                      {isApplying ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          应用中...
+                        </>
+                      ) : hasUnmatched ? (
+                        <>
+                          仅应用已匹配的修改
+                          <ArrowRight className="w-4 h-4" />
+                        </>
+                      ) : (
+                        <>
+                          确认应用
+                          <ArrowRight className="w-4 h-4" />
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
             <button
               onClick={handleGoToWrite}
               className="w-full mt-3 text-xs text-moss-600 hover:text-moss-700 font-medium flex items-center justify-center gap-1 transition-colors"

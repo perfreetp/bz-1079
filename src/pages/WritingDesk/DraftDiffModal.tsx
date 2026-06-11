@@ -1,8 +1,34 @@
 import { useMemo } from 'react';
-import { X, RotateCcw, FileText, Sparkles, ArrowLeftRight } from 'lucide-react';
+import { X, RotateCcw, FileText, Sparkles, ArrowLeftRight, Tag } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { DraftVersion } from '@/types';
+import type { DraftVersion, DraftVersionSource } from '@/types';
 import { formatDate } from '@/utils/date';
+
+const sourceLabels: Record<DraftVersionSource, string> = {
+  manual: '手动保存',
+  ai_tone: 'AI 改写',
+  ai_expand: 'AI 扩写',
+  ai_golden: '金句插入',
+  material_insert: '素材插入',
+  review_apply: '审核应用',
+  restore_backup: '恢复前备份',
+  restore: '已恢复',
+  ai_undo: 'AI 撤销',
+  auto_save: '自动保存',
+};
+
+const sourceColors: Record<DraftVersionSource, string> = {
+  manual: 'bg-ink-100 text-ink-600',
+  ai_tone: 'bg-vermilion-50 text-vermilion-700',
+  ai_expand: 'bg-moss-50 text-moss-600',
+  ai_golden: 'bg-gold-50 text-gold-600',
+  material_insert: 'bg-blue-50 text-blue-600',
+  review_apply: 'bg-moss-50 text-moss-600',
+  restore_backup: 'bg-ink-100 text-ink-500',
+  restore: 'bg-moss-50 text-moss-600',
+  ai_undo: 'bg-orange-50 text-orange-600',
+  auto_save: 'bg-ink-100 text-ink-500',
+};
 
 interface DraftDiffModalProps {
   version: DraftVersion;
@@ -132,6 +158,11 @@ export default function DraftDiffModal({
             <div className="px-5 py-3 bg-ink-50 border-b border-ink-100 flex items-center gap-2 flex-shrink-0">
               <FileText className="w-4 h-4 text-ink-400" />
               <span className="text-sm font-medium text-ink-600">历史版本</span>
+              {version.source && (
+                <span className={cn('text-[10px] px-1.5 py-0.5 rounded font-medium', sourceColors[version.source])}>
+                  {sourceLabels[version.source]}
+                </span>
+              )}
               <span className="text-xs text-ink-400 ml-auto">
                 {formatDate(version.createdAt, 'full')}
               </span>

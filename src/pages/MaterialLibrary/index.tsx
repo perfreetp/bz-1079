@@ -3,14 +3,16 @@ import { cn } from '@/lib/utils';
 import ImageGallery from './ImageGallery';
 import ReferenceList from './ReferenceList';
 import BrandTerms from './BrandTerms';
+import ArticleMaterialsPanel from './ArticleMaterialsPanel';
 import { useMaterialStore } from '@/store/materialStore';
 
-type TabKey = 'images' | 'references' | 'brands';
+type TabKey = 'images' | 'references' | 'brands' | 'article';
 
 const tabs: { key: TabKey; label: string }[] = [
   { key: 'images', label: '图片素材' },
   { key: 'references', label: '引用来源' },
   { key: 'brands', label: '品牌词库' },
+  { key: 'article', label: '文章素材' },
 ];
 
 export default function MaterialLibrary() {
@@ -52,6 +54,7 @@ export default function MaterialLibrary() {
             {activeTab === 'images' && <ImageGallery materials={materials} />}
             {activeTab === 'references' && <ReferenceList materials={materials} />}
             {activeTab === 'brands' && <BrandTerms brandTerms={brandTerms} />}
+            {activeTab === 'article' && <ArticleMaterialsPanel />}
           </div>
         </div>
       </div>

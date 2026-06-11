@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MessageSquare, Send, Reply, CheckCircle, User } from 'lucide-react';
+import { MessageSquare, Send, Reply, CheckCircle, User, Square, CheckSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Comment } from '@/types';
 
@@ -13,6 +13,7 @@ interface CommentPanelProps {
   onAddComment: (content: string, author: string) => void;
   onAddReply: (parentId: string, content: string, author: string) => void;
   onResolve: (id: string) => void;
+  onToggleTodo?: (id: string) => void;
 }
 
 function getInitial(name: string) {
@@ -48,10 +49,12 @@ interface CommentCardProps {
   isReply?: boolean;
   onResolve: (id: string) => void;
   onReply: (id: string) => void;
+  onToggleTodo?: (id: string) => void;
 }
 
-function CommentCard({ comment, isReply, onResolve, onReply }: CommentCardProps) {
+function CommentCard({ comment, isReply, onResolve, onReply, onToggleTodo }: CommentCardProps) {
   const isResolved = comment.status === 'resolved';
+  const isTodoItem = comment.type === 'todo';
 
   return (
     <div className={cn(isReply && 'ml-10 mt-2')}>
@@ -72,26 +75,50 @@ function CommentCard({ comment, isReply, onResolve, onReply }: CommentCardProps)
             <span className="sr-only">{getInitial(comment.author)}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className={cn('text-sm font-medium', isResolved ? 'text-ink-400' : 'text-ink-700')}>
                 {comment.author}
               </span>
               <span className="text-xs text-ink-300">{formatDate(comment.createdAt)}</span>
-              {comment.paragraphRef && (
-                <span className="text-[10px] text-ink-400 bg-paper-100 px-1.5 py-0.5 rounded">
-                  段落 {comment.paragraphRef}
-                </span>
-              )}
               {isResolved && (
                 <span className="flex items-center gap-0.5 text-[10px] text-moss-500 bg-moss-50 px-1.5 py-0.5 rounded">
                   <CheckCircle className="w-3 h-3" />
                   已解决
                 </span>
               )}
+              {isTodoItem && !isResolved && (
+                <span className="text-[10px] text-gold-600 bg-gold-50 px-1.5 py-0.5 rounded">待办</span>
+              )}
             </div>
-            <p className={cn('text-sm mt-1 leading-relaxed', isResolved ? 'text-ink-400' : 'text-ink-600')}>
-              {comment.content}
-            </p>
+
+            {comment.paragraphRef && (
+              <div className="mt-1.5 px-2.5 py-1.5 bg-paper-100 border-l-2 border-ink-200 rounded-r text-xs text-ink-500 line-clamp-2 italic">
+                「{comment.paragraphRef}」
+              </div>
+            )}
+
+            <div className="flex items-start gap-2 mt-1">
+              {isTodoItem && onToggleTodo && (
+                <button
+                  onClick={() => onToggleTodo(comment.id)}
+                  className="mt-0.5 shrink-0"
+                >
+                  {comment.completed ? (
+                    <CheckSquare className="w-4 h-4 text-moss-500" />
+                  ) : (
+                    <Square className="w-4 h-4 text-ink-300" />
+                  )}
+                </button>
+              )}
+              <p className={cn(
+                'text-sm leading-relaxed',
+                isResolved ? 'text-ink-400' : 'text-ink-600',
+                isTodoItem && comment.completed && 'line-through text-ink-400'
+              )}>
+                {comment.content}
+              </p>
+            </div>
+
             {!isReply && !isResolved && (
               <div className="flex items-center gap-3 mt-2">
                 <button
@@ -123,6 +150,7 @@ function CommentCard({ comment, isReply, onResolve, onReply }: CommentCardProps)
               isReply
               onResolve={onResolve}
               onReply={onReply}
+              onToggleTodo={onToggleTodo}
             />
           ))}
         </div>
@@ -137,6 +165,7 @@ export default function CommentPanel({
   onAddComment,
   onAddReply,
   onResolve,
+  onToggleTodo,
 }: CommentPanelProps) {
   const [inputValue, setInputValue] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -186,6 +215,7 @@ export default function CommentPanel({
               comment={comment}
               onResolve={onResolve}
               onReply={(id) => setReplyingTo(id)}
+              onToggleTodo={onToggleTodo}
             />
           ))
         )}

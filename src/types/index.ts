@@ -74,7 +74,18 @@ export interface Version {
   source?: VersionSource;
 }
 
-export type DraftVersionSource = 'manual' | 'ai_tone' | 'ai_expand' | 'ai_golden' | 'material_insert' | 'review_apply';
+export interface InsertedMaterial {
+  id: string;
+  articleId: string;
+  materialId: string;
+  materialType: 'image' | 'quote' | 'brand';
+  content: string;
+  position: number;
+  insertedAt: string;
+  title: string;
+}
+
+export type DraftVersionSource = 'manual' | 'ai_tone' | 'ai_expand' | 'ai_golden' | 'material_insert' | 'review_apply' | 'restore_backup' | 'restore' | 'ai_undo' | 'auto_save';
 
 export interface DraftVersion {
   id: string;
@@ -95,6 +106,8 @@ export interface Comment {
   author: string;
   avatar?: string;
   status: 'open' | 'resolved';
+  type?: 'comment' | 'todo';
+  completed?: boolean;
   createdAt: string;
   replies?: Comment[];
 }
