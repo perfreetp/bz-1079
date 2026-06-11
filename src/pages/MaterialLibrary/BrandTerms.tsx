@@ -1,8 +1,13 @@
 import { useState } from 'react';
-import { Plus, Package, Megaphone, Ban, MessageSquare, Copy, ArrowRight } from 'lucide-react';
+import { Plus, Package, Megaphone, Ban, MessageSquare, Trash2, ArrowRight, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { brandTerms as mockBrandTerms } from '@/data/materials';
 import type { BrandTerm, BrandTermCategory } from '@/types';
+import { useMaterialStore } from '@/store/materialStore';
+import { useToast } from '@/components/ui/Toast';
+
+interface BrandTermsProps {
+  brandTerms: BrandTerm[];
+}
 
 const categories: { key: BrandTermCategory | 'all'; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: 'all', label: '全部', icon: Package },
@@ -12,65 +17,66 @@ const categories: { key: BrandTermCategory | 'all'; label: string; icon: React.C
   { key: 'preferred', label: '推荐话术', icon: MessageSquare },
 ];
 
-const allTerms: BrandTerm[] = [
-  ...mockBrandTerms,
-  {
-    id: 'bt-extra-1',
-    term: '墨笔AI写作助手',
-    category: 'product',
-    isForbidden: false,
-    description: '产品全称，首次出现使用',
-  },
-  {
-    id: 'bt-extra-2',
-    term: '极致',
-    category: 'forbidden',
-    replacement: '出色',
-    isForbidden: true,
-    description: '广告法禁用绝对化用语',
-  },
-  {
-    id: 'bt-extra-3',
-    term: '全球领先',
-    category: 'forbidden',
-    replacement: '行业前列',
-    isForbidden: true,
-    description: '广告法禁用夸大宣传用语',
-  },
-  {
-    id: 'bt-extra-4',
-    term: '让文字有力量',
-    category: 'slogan',
-    isForbidden: false,
-    description: '副Slogan，可用于产品内页',
-  },
-  {
-    id: 'bt-extra-5',
-    term: '降本增效',
-    category: 'preferred',
-    isForbidden: false,
-    description: '推荐话术：突出效率价值',
-  },
-  {
-    id: 'bt-extra-6',
-    term: '智能创作',
-    category: 'preferred',
-    isForbidden: false,
-    description: '推荐话术：体现AI能力',
-  },
-];
-
-export default function BrandTerms() {
+export default function BrandTerms({ brandTerms }: BrandTermsProps) {
   const [activeCategory, setActiveCategory] = useState<BrandTermCategory | 'all'>('all');
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newTerm, setNewTerm] = useState('');
+  const [newCategory, setNewCategory] = useState<BrandTermCategory>('product');
+  const [newReplacement, setNewReplacement] = useState('');
+  const [newDescription, setNewDescription] = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  const { addBrandTerm, deleteBrandTerm } = useMaterialStore();
+  const { showToast } = useToast();
 
   const filteredTerms =
-    activeCategory === 'all' ? allTerms : allTerms.filter((t) => t.category === activeCategory);
+    activeCategory === 'all'
+      ? brandTerms
+      : brandTerms.filter((t) => t.category === activeCategory);
 
-  const handleCopy = (id: string, term: string) => {
-    navigator.clipboard?.writeText(term);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 1500);
+  const categoryCounts = {
+    all: brandTerms.length,
+    product: brandTerms.filter((t) => t.category === 'product').length,
+    slogan: brandTerms.filter((t) => t.category === 'slogan').length,
+    forbidden: brandTerms.filter((t) => t.category === 'forbidden').length,
+    preferred: brandTerms.filter((t) => t.category === 'preferred').length,
+  };
+
+  const handleAddTerm = () => {
+    if (!newTerm.trim()) {
+      showToast('请输入词汇内容', 'error');
+      return;
+    }
+
+    const termData: BrandTerm = {
+      id: `bt-${Date.now()}`,
+      term: newTerm.trim(),
+      category: newCategory,
+      isForbidden: newCategory === 'forbidden',
+      description: newDescription.trim() || undefined,
+    };
+
+    if (newCategory === 'forbidden' && newReplacement.trim()) {
+      termData.replacement = newReplacement.trim();
+    }
+
+    addBrandTerm(termData);
+    setNewTerm('');
+    setNewCategory('product');
+    setNewReplacement('');
+    setNewDescription('');
+    setShowAddModal(false);
+    showToast('词汇添加成功', 'success');
+  };
+
+  const handleDelete = (id: string, term: string) => {
+    deleteBrandTerm(id);
+    setDeleteConfirmId(null);
+    showToast(`已删除词汇：${term}`, 'success');
+  };
+
+  const handleInsert = (term: BrandTerm) => {
+    showToast(`已插入词汇"${term.term}"`, 'info');
   };
 
   const getCardBorderClass = (term: BrandTerm) => {
@@ -103,7 +109,10 @@ export default function BrandTerms() {
           <h3 className="text-base font-bold text-ink-800 font-serif">品牌词库</h3>
           <p className="text-xs text-ink-400 mt-0.5">共 {filteredTerms.length} 个词汇</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-vermilion text-white text-sm font-medium rounded-lg hover:bg-vermilion-600 transition-colors">
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-vermilion text-white text-sm font-medium rounded-lg hover:bg-vermilion-600 transition-colors"
+        >
           <Plus className="w-4 h-4" />
           添加词汇
         </button>
@@ -134,9 +143,7 @@ export default function BrandTerms() {
                       isActive ? 'bg-vermilion-100 text-vermilion-600' : 'bg-paper-200 text-ink-400'
                     )}
                   >
-                    {cat.key === 'all'
-                      ? allTerms.length
-                      : allTerms.filter((t) => t.category === cat.key).length}
+                    {categoryCounts[cat.key]}
                   </span>
                 </button>
               );
@@ -150,7 +157,7 @@ export default function BrandTerms() {
               <div
                 key={term.id}
                 className={cn(
-                  'rounded-xl border p-4 shadow-paper hover:shadow-paper-hover transition-all',
+                  'rounded-xl border p-4 shadow-paper hover:shadow-paper-hover transition-all relative',
                   getCardBorderClass(term)
                 )}
               >
@@ -185,25 +192,162 @@ export default function BrandTerms() {
                       <p className="text-xs text-ink-400 mt-2">{term.description}</p>
                     )}
                   </div>
-                  <button
-                    onClick={() => handleCopy(term.id, term.term)}
-                    className={cn(
-                      'shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-colors',
-                      copiedId === term.id
-                        ? 'bg-moss-100 text-moss-600'
-                        : term.isForbidden
-                        ? 'bg-vermilion-100 text-vermilion-600 hover:bg-vermilion-200'
-                        : 'bg-moss-100 text-moss-600 hover:bg-moss-200'
-                    )}
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => handleInsert(term)}
+                      className={cn(
+                        'w-8 h-8 rounded-lg flex items-center justify-center transition-colors',
+                        term.isForbidden
+                          ? 'bg-vermilion-100 text-vermilion-600 hover:bg-vermilion-200'
+                          : 'bg-moss-100 text-moss-600 hover:bg-moss-200'
+                      )}
+                      title="快捷插入"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirmId(term.id)}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-400 hover:text-vermilion-600 hover:bg-vermilion-50 transition-colors"
+                      title="删除"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
+
+                {deleteConfirmId === term.id && (
+                  <div className="absolute inset-0 bg-ink-900/80 rounded-xl flex flex-col items-center justify-center gap-3 z-10">
+                    <p className="text-white text-sm font-medium px-4 text-center">
+                      确认删除词汇"{term.term}"？
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setDeleteConfirmId(null)}
+                        className="px-3 py-1.5 text-xs bg-paper/20 text-white rounded-lg hover:bg-paper/30 transition-colors"
+                      >
+                        取消
+                      </button>
+                      <button
+                        onClick={() => handleDelete(term.id, term.term)}
+                        className="px-3 py-1.5 text-xs bg-vermilion text-white rounded-lg hover:bg-vermilion-600 transition-colors"
+                      >
+                        删除
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
+            {filteredTerms.length === 0 && (
+              <div className="col-span-2 py-16 text-center text-ink-400 text-sm">
+                暂无{activeCategory === 'all' ? '' : getCategoryLabel(activeCategory)}词汇，点击"添加词汇"创建
+              </div>
+            )}
           </div>
         </div>
       </div>
+
+      {showAddModal && (
+        <div className="fixed inset-0 bg-ink-900/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-paper rounded-2xl w-full max-w-lg shadow-2xl">
+            <div className="flex items-center justify-between p-5 border-b border-paper-200">
+              <h3 className="text-lg font-bold text-ink-800 font-serif">添加词汇</h3>
+              <button
+                onClick={() => {
+                  setShowAddModal(false);
+                  setNewTerm('');
+                  setNewCategory('product');
+                  setNewReplacement('');
+                  setNewDescription('');
+                }}
+                className="p-1.5 rounded-lg hover:bg-paper-100 transition-colors"
+              >
+                <X className="w-5 h-5 text-ink-400" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-ink-500 mb-1.5">词汇 *</label>
+                <input
+                  type="text"
+                  value={newTerm}
+                  onChange={(e) => setNewTerm(e.target.value)}
+                  placeholder="请输入词汇内容"
+                  className="w-full px-3 py-2 text-sm border border-paper-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-vermilion/30 focus:border-vermilion"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-ink-500 mb-1.5">分类 *</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {(categories.slice(1) as { key: BrandTermCategory; label: string }[]).map((cat) => (
+                    <button
+                      key={cat.key}
+                      type="button"
+                      onClick={() => setNewCategory(cat.key)}
+                      className={cn(
+                        'px-3 py-2 text-xs font-medium rounded-lg transition-colors border',
+                        newCategory === cat.key
+                          ? cat.key === 'forbidden'
+                            ? 'bg-vermilion-50 border-vermilion-300 text-vermilion-600'
+                            : cat.key === 'preferred'
+                            ? 'bg-moss-50 border-moss-300 text-moss-600'
+                            : cat.key === 'slogan'
+                            ? 'bg-gold-50 border-gold-300 text-gold-600'
+                            : 'bg-vermilion-50 border-vermilion-300 text-vermilion-600'
+                          : 'bg-paper border-paper-200 text-ink-500 hover:bg-paper-50'
+                      )}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {newCategory === 'forbidden' && (
+                <div>
+                  <label className="block text-xs font-medium text-ink-500 mb-1.5">替换建议词</label>
+                  <input
+                    type="text"
+                    value={newReplacement}
+                    onChange={(e) => setNewReplacement(e.target.value)}
+                    placeholder='例如：非常（替换"最"）'
+                    className="w-full px-3 py-2 text-sm border border-paper-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-vermilion/30 focus:border-vermilion"
+                  />
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-medium text-ink-500 mb-1.5">描述说明</label>
+                <textarea
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  placeholder="使用场景、注意事项等"
+                  rows={3}
+                  className="w-full px-3 py-2 text-sm border border-paper-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-vermilion/30 focus:border-vermilion resize-none"
+                />
+              </div>
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setNewTerm('');
+                    setNewCategory('product');
+                    setNewReplacement('');
+                    setNewDescription('');
+                  }}
+                  className="px-4 py-2 text-sm bg-paper-100 text-ink-600 rounded-lg hover:bg-paper-200 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleAddTerm}
+                  className="px-4 py-2 text-sm bg-vermilion text-white rounded-lg hover:bg-vermilion-600 transition-colors"
+                >
+                  添加
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

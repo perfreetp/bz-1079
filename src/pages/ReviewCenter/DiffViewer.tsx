@@ -1,7 +1,5 @@
-import { useState } from 'react';
 import { CheckSquare, FileText, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { reviewIssues } from '@/data/materials';
 import type { ReviewIssue } from '@/types';
 
 interface DiffSegment {
@@ -49,8 +47,11 @@ function buildSegments(content: string, issues: ReviewIssue[]): DiffSegment[] {
   return segments;
 }
 
-function buildModifiedContent(content: string, issues: ReviewIssue[]): string {
-  const sortedIssues = [...issues].sort((a, b) => b.position - a.position);
+function buildModifiedContent(content: string, issues: ReviewIssue[], useAllAccepted: boolean): string {
+  const issuesToApply = useAllAccepted
+    ? issues
+    : issues.filter((i) => i.resolved && i.resolvedType === 'accepted');
+  const sortedIssues = [...issuesToApply].sort((a, b) => b.position - a.position);
   let result = content;
 
   for (const issue of sortedIssues) {
@@ -65,11 +66,19 @@ function buildModifiedContent(content: string, issues: ReviewIssue[]): string {
   return result;
 }
 
-export default function DiffViewer() {
-  const [allAccepted, setAllAccepted] = useState(false);
-  const unresolvedIssues = reviewIssues.filter((i) => !i.resolved);
+interface DiffViewerProps {
+  issues: ReviewIssue[];
+  onAcceptAll: () => void;
+  articleTitle?: string;
+}
+
+export default function DiffViewer({ issues, onAcceptAll, articleTitle }: DiffViewerProps) {
+  const unresolvedIssues = issues.filter((i) => !i.resolved);
+  const allAccepted = unresolvedIssues.length === 0 && issues.length > 0;
   const segments = buildSegments(originalContent, unresolvedIssues);
-  const modifiedContent = buildModifiedContent(originalContent, unresolvedIssues);
+  const modifiedContent = buildModifiedContent(originalContent, issues, allAccepted);
+
+  const displayTitle = articleTitle || '2026品牌营销趋势：谁能赢得用户注意力，谁就赢得未来';
 
   return (
     <div className="bg-paper rounded-2xl shadow-paper overflow-hidden h-full flex flex-col">
@@ -79,11 +88,12 @@ export default function DiffViewer() {
           <h3 className="text-base font-bold text-ink-800 font-serif">原文对照</h3>
         </div>
         <button
-          onClick={() => setAllAccepted(true)}
+          onClick={onAcceptAll}
+          disabled={allAccepted || unresolvedIssues.length === 0}
           className={cn(
             'flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
-            allAccepted
-              ? 'bg-moss-100 text-moss-600'
+            allAccepted || unresolvedIssues.length === 0
+              ? 'bg-moss-100 text-moss-600 cursor-default'
               : 'bg-vermilion text-white hover:bg-vermilion-600'
           )}
         >
@@ -102,7 +112,7 @@ export default function DiffViewer() {
           <div className="flex-1 overflow-y-auto p-5">
             <article className="prose prose-sm max-w-none">
               <h1 className="text-lg font-bold text-ink-800 font-serif mb-4 text-center">
-                2026品牌营销趋势：谁能赢得用户注意力，谁就赢得未来
+                {displayTitle}
               </h1>
               <div className="space-y-3 text-sm leading-relaxed text-ink-700">
                 {segments.map((segment, idx) => (
@@ -118,6 +128,27 @@ export default function DiffViewer() {
                   </span>
                 ))}
               </div>
+              {unresolvedIssues.length > 0 && (
+                <div className="mt-5 pt-4 border-t border-paper-200 space-y-2">
+                  <p className="text-xs font-medium text-ink-500 mb-2">待处理建议：</p>
+                  {unresolvedIssues.map((issue) => (
+                    <div key={issue.id} className="flex items-start gap-2 p-2 rounded-lg bg-moss-50/70 border border-moss-100">
+                      <span className="text-xs text-vermilion-600 shrink-0 mt-0.5 font-medium bg-vermilion-50 px-1.5 py-0.5 rounded">
+                        原文
+                      </span>
+                      <span className="text-xs text-vermilion-700 line-through decoration-vermilion-400 flex-1">
+                        {issue.originalText}
+                      </span>
+                      <span className="text-xs text-moss-600 shrink-0 mt-0.5 font-medium bg-moss-100 px-1.5 py-0.5 rounded">
+                        建议
+                      </span>
+                      <span className="text-xs text-moss-700 font-medium flex-1 bg-moss-100/50 px-1.5 py-0.5 rounded">
+                        {issue.suggestion || issue.originalText}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </article>
           </div>
         </div>
@@ -136,9 +167,12 @@ export default function DiffViewer() {
           <div className="flex-1 overflow-y-auto p-5">
             <article className="prose prose-sm max-w-none">
               <h1 className="text-lg font-bold text-ink-800 font-serif mb-4 text-center">
-                2026品牌营销趋势：谁能赢得用户注意力，谁就赢得未来
+                {displayTitle}
               </h1>
-              <div className="space-y-3 text-sm leading-relaxed text-ink-700 whitespace-pre-wrap">
+              <div className={cn(
+                'space-y-3 text-sm leading-relaxed whitespace-pre-wrap',
+                allAccepted ? 'text-moss-700 bg-moss-50/30 p-3 rounded-lg' : 'text-ink-700'
+              )}>
                 {modifiedContent}
               </div>
             </article>

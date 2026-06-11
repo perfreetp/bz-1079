@@ -1,10 +1,11 @@
-import { useState } from 'react';
-import type { OutlineSection } from '@/types';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
+import type { OutlineSection, AITone } from '@/types';
 import RichEditor from './RichEditor';
 import AIToolbox from './AIToolbox';
 import WritingProgress from './WritingProgress';
 import { cn } from '@/lib/utils';
-import { PenLine, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
+import { PenLine, ChevronLeft, ChevronRight, BookOpen, CheckCircle } from 'lucide-react';
 
 const mockOutline: OutlineSection[] = [
   {
@@ -144,16 +145,196 @@ function OutlinePanel({ data, collapsed, activeSectionId, onSelect }: OutlinePan
   );
 }
 
+const goldenSentences = [
+  '创作的本质，是用思想点亮他人的旅程。',
+  '每一个字符背后，都是对世界更深的理解。',
+  '技术为笔，思想为墨，书写属于这个时代的篇章。',
+];
+
+const expandCaseTexts: Record<string, string> = {
+  '轻度': `\n\n三、实战案例解析\n\n以某新锐茶饮品牌"茶语轩"为例，该品牌通过精准的数字化内容营销策略，在短短半年内实现了品牌知名度的显著提升。`,
+  '适中': `\n\n三、实战案例解析\n\n以某新锐茶饮品牌"茶语轩"为例，该品牌通过精准的数字化内容营销策略，在短短半年内实现了品牌知名度87%的提升和线上订单量156%的增长。其核心策略在于：首先，通过数据分析锁定了25-35岁的都市白领人群，将其作为核心目标受众；其次，围绕"健康、品质、生活方式"三大关键词构建了完整的内容矩阵；最后，结合小红书、抖音等平台的特性，定制化产出符合平台生态的优质内容，形成了从种草到转化的完整闭环。`,
+  '详细': `\n\n三、实战案例解析\n\n以某新锐茶饮品牌"茶语轩"为例，该品牌通过精准的数字化内容营销策略，在2024年上半年短短6个月内实现了品牌知名度87%的提升、线上订单量156%的增长以及会员复购率42%的优异成绩，成为新消费领域内容营销的标杆案例。\n\n其核心策略在于多维度的系统化布局：首先，通过全网用户行为数据分析，精准锁定了25-35岁的一二线城市都市白领人群，将其作为核心目标受众，并深度洞察了这一群体"追求品质生活、注重健康理念、乐于社交分享"的消费特征；其次，围绕"健康、品质、生活方式"三大核心关键词构建了完整的内容矩阵，涵盖产品故事、原料溯源、制茶工艺、生活美学等多个维度，确保内容的深度与广度；再次，结合小红书、抖音、微信公众号等主流平台的内容生态特性，定制化产出符合平台用户习惯的优质内容，小红书侧重图文笔记与达人种草，抖音侧重短视频与直播互动，公众号侧重深度品牌故事与用户社群运营；最后，建立了完善的数据监测与优化体系，通过实时追踪内容曝光量、互动率、转化率等关键指标，持续迭代内容策略，形成了从内容种草、用户互动到最终转化的完整营销闭环。该案例充分证明了，在数字化时代，系统化、数据驱动的内容创作策略能够为品牌带来持续且可观的商业价值。`,
+};
+
 export default function WritingDesk() {
+  const { id } = useParams<{ id: string }>();
+  const articleId = id || 'default';
+  const storageKey = `mobi_draft_${articleId}`;
+
   const [outlineCollapsed, setOutlineCollapsed] = useState(false);
   const [activeSectionId, setActiveSectionId] = useState('sec-2');
-  const [content, setContent] = useState(sampleContent);
+  const [content, setContent] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      return saved || sampleContent;
+    } catch {
+      return sampleContent;
+    }
+  });
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
 
   const wordCount = content.replace(/\s/g, '').length;
   const targetWordCount = 3700;
 
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        setContent(saved);
+      }
+    } catch {
+      // ignore
+    }
+  }, [storageKey]);
+
+  const showToastMessage = useCallback((message: string) => {
+    setToastMessage(message);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 2500);
+  }, []);
+
+  const applyFormalTone = (text: string): string => {
+    let result = text.replace(/你/g, '您');
+    const formalWords = ['综上所述，', '据此，', '特此说明，'];
+    const paragraphs = result.split('\n\n');
+    if (paragraphs.length > 0) {
+      const lastIdx = paragraphs.length - 1;
+      const lastPara = paragraphs[lastIdx];
+      if (!lastPara.startsWith('综上所述') && !lastPara.startsWith('据此') && !lastPara.startsWith('特此')) {
+        paragraphs[lastIdx] = formalWords[Math.floor(Math.random() * formalWords.length)] + lastPara;
+      }
+    }
+    return paragraphs.join('\n\n');
+  };
+
+  const applyCasualTone = (text: string): string => {
+    let result = text.replace(/因此/g, '所以');
+    const sentences = result.split(/(?<=[。！？!?.])/g);
+    const casualSuffixes = ['~', '啦', '呢'];
+    result = sentences.map((sentence, idx) => {
+      if (idx % 5 === 3 && sentence.length > 2) {
+        const suffix = casualSuffixes[Math.floor(Math.random() * casualSuffixes.length)];
+        return sentence.slice(0, -1) + suffix + sentence.slice(-1);
+      }
+      return sentence;
+    }).join('');
+    return result;
+  };
+
+  const applyProfessionalTone = (text: string): string => {
+    let result = text
+      .replace(/用户/g, '受众')
+      .replace(/好处/g, '价值')
+      .replace(/很多/g, '大量')
+      .replace(/用/g, '运用');
+    return result;
+  };
+
+  const applyLiteraryTone = (text: string): string => {
+    let result = text
+      .replace(/重要/g, '至关重要的')
+      .replace(/发展/g, '蓬勃发展')
+      .replace(/变化/g, '日新月异的变化')
+      .replace(/影响/g, '深远的影响');
+    return result;
+  };
+
+  const onApplyTone = useCallback((tone: AITone, _selectedText?: string): string => {
+    let newContent = content;
+    let targetText = _selectedText;
+
+    if (!targetText || targetText.trim() === '') {
+      const paragraphs = content.split('\n\n');
+      if (paragraphs.length > 0) {
+        targetText = paragraphs[0];
+      }
+    }
+
+    if (targetText) {
+      let transformedText = targetText;
+      switch (tone) {
+        case 'formal':
+          transformedText = applyFormalTone(targetText);
+          break;
+        case 'casual':
+          transformedText = applyCasualTone(targetText);
+          break;
+        case 'professional':
+          transformedText = applyProfessionalTone(targetText);
+          break;
+        case 'literary':
+          transformedText = applyLiteraryTone(targetText);
+          break;
+      }
+
+      if (!_selectedText) {
+        const paragraphs = newContent.split('\n\n');
+        paragraphs[0] = transformedText;
+        newContent = paragraphs.join('\n\n');
+      } else {
+        newContent = newContent.replace(targetText, transformedText);
+      }
+    }
+
+    setContent(newContent);
+    showToastMessage(`已应用${tone === 'formal' ? '正式' : tone === 'casual' ? '轻松' : tone === 'professional' ? '专业' : '文艺'}语气`);
+    return newContent;
+  }, [content, showToastMessage]);
+
+  const onExpand = useCallback((level: string): string => {
+    const caseText = expandCaseTexts[level] || expandCaseTexts['适中'];
+    const newContent = content + caseText;
+    setContent(newContent);
+    showToastMessage(`已追加${level}案例段落`);
+    return newContent;
+  }, [content, showToastMessage]);
+
+  const onInsertGolden = useCallback((index: number): string => {
+    const actualIndex = index % goldenSentences.length;
+    const golden = `「${goldenSentences[actualIndex]}」`;
+    const newContent = golden + '\n\n' + content;
+    setContent(newContent);
+    showToastMessage('金句已插入');
+    return newContent;
+  }, [content, showToastMessage]);
+
+  const onPolish = useCallback((_options: string[]): string => {
+    let newContent = content
+      .replace(/非常/g, '尤为')
+      .replace(/但是/g, '然而')
+      .replace(/所以/g, '因此')
+      .replace(/，，/g, '，')
+      .replace(/。。/g, '。')
+      .replace(/！！/g, '！')
+      .replace(/？？/g, '？')
+      .replace(/\s+([，。！？；：])/g, '$1');
+    setContent(newContent);
+    showToastMessage('润色完成');
+    return newContent;
+  }, [content, showToastMessage]);
+
+  const handleSaveDraft = useCallback(() => {
+    try {
+      localStorage.setItem(storageKey, content);
+      showToastMessage('草稿已保存');
+    } catch {
+      showToastMessage('保存失败，请重试');
+    }
+  }, [storageKey, content, showToastMessage]);
+
   return (
-    <div className="h-screen bg-paper-100 flex flex-col overflow-hidden">
+    <div className="h-screen bg-paper-100 flex flex-col overflow-hidden relative">
+      {showToast && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] animate-fade-in">
+          <div className="flex items-center gap-2 px-5 py-3 bg-ink-800/95 text-white rounded-xl shadow-lg backdrop-blur-sm">
+            <CheckCircle className="w-4 h-4 text-moss" />
+            <span className="text-sm font-medium">{toastMessage}</span>
+          </div>
+        </div>
+      )}
+
       <header className="bg-white border-b border-ink-100 px-6 py-3 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 bg-moss rounded-xl flex items-center justify-center">
@@ -170,7 +351,10 @@ export default function WritingDesk() {
           <span className="text-sm text-ink-500">
             已写 <span className="font-semibold text-ink-800">{wordCount.toLocaleString()}</span> 字
           </span>
-          <button className="px-4 py-2 bg-moss text-white text-sm font-medium rounded-lg hover:bg-moss-600 transition-colors">
+          <button
+            onClick={handleSaveDraft}
+            className="px-4 py-2 bg-moss text-white text-sm font-medium rounded-lg hover:bg-moss-600 transition-colors"
+          >
             保存草稿
           </button>
         </div>
@@ -226,7 +410,12 @@ export default function WritingDesk() {
         </main>
 
         <aside className="w-72 bg-white border-l border-ink-100 overflow-y-auto flex-shrink-0">
-          <AIToolbox />
+          <AIToolbox
+            onApplyTone={onApplyTone}
+            onExpand={onExpand}
+            onInsertGolden={onInsertGolden}
+            onPolish={onPolish}
+          />
         </aside>
       </div>
     </div>

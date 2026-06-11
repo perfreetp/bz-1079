@@ -1,7 +1,33 @@
 import { create } from 'zustand';
 import type { Material, BrandTerm, HotTopic, CalendarItem } from '@/types';
-import { materials, brandTerms } from '@/data/materials';
+import { materials as defaultMaterials, brandTerms as defaultBrandTerms } from '@/data/materials';
 import { hotTopics, calendarItems } from '@/data/articles';
+
+const MATERIALS_KEY = 'mobi_materials';
+const BRANDTERMS_KEY = 'mobi_brandterms';
+
+const loadFromStorage = <T>(key: string, defaultValue: T): T => {
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      return JSON.parse(stored) as T;
+    }
+  } catch (e) {
+    console.error(`读取 localStorage ${key} 失败:`, e);
+  }
+  return defaultValue;
+};
+
+const saveToStorage = <T>(key: string, value: T): void => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.error(`写入 localStorage ${key} 失败:`, e);
+  }
+};
+
+const initialMaterials = loadFromStorage<Material[]>(MATERIALS_KEY, defaultMaterials);
+const initialBrandTerms = loadFromStorage<BrandTerm[]>(BRANDTERMS_KEY, defaultBrandTerms);
 
 interface MaterialStore {
   materials: Material[];
@@ -13,22 +39,77 @@ interface MaterialStore {
 
   addMaterial: (material: Material) => void;
   deleteMaterial: (id: string) => void;
+  updateMaterial: (id: string, updates: Partial<Material>) => void;
+  addBrandTerm: (term: BrandTerm) => void;
+  deleteBrandTerm: (id: string) => void;
+  addReference: (ref: { title: string; source: string }) => void;
   toggleTag: (tag: string) => void;
   setSearchQuery: (q: string) => void;
   addHotTopicToMaterials: (topic: HotTopic) => void;
 }
 
 export const useMaterialStore = create<MaterialStore>((set, get) => ({
-  materials,
-  brandTerms,
+  materials: initialMaterials,
+  brandTerms: initialBrandTerms,
   hotTopics,
   calendarItems,
   selectedTags: [],
   searchQuery: '',
 
-  addMaterial: (material) => set((state) => ({ materials: [material, ...state.materials] })),
+  addMaterial: (material) => {
+    set((state) => {
+      const newMaterials = [material, ...state.materials];
+      saveToStorage(MATERIALS_KEY, newMaterials);
+      return { materials: newMaterials };
+    });
+  },
 
-  deleteMaterial: (id) => set((state) => ({ materials: state.materials.filter((m) => m.id !== id) })),
+  deleteMaterial: (id) => {
+    set((state) => {
+      const newMaterials = state.materials.filter((m) => m.id !== id);
+      saveToStorage(MATERIALS_KEY, newMaterials);
+      return { materials: newMaterials };
+    });
+  },
+
+  updateMaterial: (id, updates) => {
+    set((state) => {
+      const newMaterials = state.materials.map((m) =>
+        m.id === id ? { ...m, ...updates } : m
+      );
+      saveToStorage(MATERIALS_KEY, newMaterials);
+      return { materials: newMaterials };
+    });
+  },
+
+  addBrandTerm: (term) => {
+    set((state) => {
+      const newTerms = [term, ...state.brandTerms];
+      saveToStorage(BRANDTERMS_KEY, newTerms);
+      return { brandTerms: newTerms };
+    });
+  },
+
+  deleteBrandTerm: (id) => {
+    set((state) => {
+      const newTerms = state.brandTerms.filter((t) => t.id !== id);
+      saveToStorage(BRANDTERMS_KEY, newTerms);
+      return { brandTerms: newTerms };
+    });
+  },
+
+  addReference: (ref) => {
+    const newMaterial: Material = {
+      id: `ref-${Date.now()}`,
+      type: 'link',
+      title: ref.title,
+      content: ref.source,
+      source: ref.source,
+      tags: ['引用'],
+      createdAt: new Date().toISOString(),
+    };
+    get().addMaterial(newMaterial);
+  },
 
   toggleTag: (tag) =>
     set((state) => ({

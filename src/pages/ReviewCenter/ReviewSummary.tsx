@@ -1,6 +1,6 @@
 import { RefreshCw, AlertTriangle, ShieldCheck, AlertOctagon } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { reviewIssues } from '@/data/materials';
+import { useToast } from '@/components/ui/Toast';
 import ProgressBar from '@/components/ui/ProgressBar';
 import type { IssueType, IssueSeverity } from '@/types';
 
@@ -24,27 +24,30 @@ const severityConfig: Record<IssueSeverity, { label: string; icon: React.Compone
   low: { label: '低风险', icon: ShieldCheck, className: 'bg-moss-100 text-moss-600 border-moss-200' },
 };
 
-export default function ReviewSummary() {
-  const unresolvedIssues = reviewIssues.filter((i) => !i.resolved);
-  const totalIssues = unresolvedIssues.length;
+interface ReviewSummaryProps {
+  totalIssues: number;
+  resolvedCount: number;
+  unresolvedCount: number;
+  typeStats: Record<IssueType, number>;
+  overallRisk: IssueSeverity;
+}
 
-  const typeStats: Record<IssueType, number> = {
-    sensitive: 0,
-    typo: 0,
-    duplicate: 0,
-    compliance: 0,
-  };
-  unresolvedIssues.forEach((issue) => {
-    typeStats[issue.type]++;
-  });
+export default function ReviewSummary({
+  totalIssues,
+  resolvedCount,
+  unresolvedCount,
+  typeStats,
+  overallRisk,
+}: ReviewSummaryProps) {
+  const { showToast } = useToast();
 
   const maxTypeCount = Math.max(...Object.values(typeStats), 1);
-
-  const hasHigh = unresolvedIssues.some((i) => i.severity === 'high');
-  const hasMedium = unresolvedIssues.some((i) => i.severity === 'medium');
-  const overallRisk: IssueSeverity = hasHigh ? 'high' : hasMedium ? 'medium' : 'low';
   const riskInfo = severityConfig[overallRisk];
   const RiskIcon = riskInfo.icon;
+
+  const handleRetest = () => {
+    showToast('已重新检测，内容扫描中...', 'info');
+  };
 
   return (
     <div className="bg-paper rounded-2xl p-5 shadow-paper">
@@ -53,7 +56,10 @@ export default function ReviewSummary() {
           <h3 className="text-base font-bold text-ink-800 font-serif">检测概览</h3>
           <p className="text-xs text-ink-400 mt-0.5">基于 AI 智能检测</p>
         </div>
-        <button className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-ink-600 bg-paper-100 rounded-lg hover:bg-paper-200 transition-colors">
+        <button
+          onClick={handleRetest}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-ink-600 bg-paper-100 rounded-lg hover:bg-paper-200 transition-colors"
+        >
           <RefreshCw className="w-3.5 h-3.5" />
           重新检测
         </button>
@@ -62,9 +68,12 @@ export default function ReviewSummary() {
       <div className="flex items-center gap-4 mb-5">
         <div className="flex-1">
           <div className="text-4xl font-bold text-ink-800 font-serif leading-none">
-            {totalIssues}
+            {unresolvedCount}
           </div>
           <div className="text-xs text-ink-400 mt-1">待处理问题</div>
+          <div className="text-xs text-ink-300 mt-0.5">
+            共 {totalIssues} 处，已处理 {resolvedCount} 处
+          </div>
         </div>
         <div className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium', riskInfo.className)}>
           <RiskIcon className="w-4 h-4" />

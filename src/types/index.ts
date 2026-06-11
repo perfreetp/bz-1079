@@ -102,6 +102,8 @@ export interface ArticleMetrics {
 export type IssueType = 'sensitive' | 'typo' | 'duplicate' | 'compliance';
 export type IssueSeverity = 'high' | 'medium' | 'low';
 
+export type ResolvedType = 'accepted' | 'ignored';
+
 export interface ReviewIssue {
   id: string;
   articleId: string;
@@ -111,6 +113,7 @@ export interface ReviewIssue {
   suggestion?: string;
   position: number;
   resolved: boolean;
+  resolvedType?: ResolvedType;
 }
 
 export interface CalendarItem {

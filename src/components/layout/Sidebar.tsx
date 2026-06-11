@@ -14,11 +14,11 @@ import { cn } from '@/lib/utils'
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: '工作台' },
   { to: '/topics', icon: Lightbulb, label: '选题中心' },
-  { to: '/outline', icon: ListTree, label: '大纲构建' },
-  { to: '/writing', icon: PenTool, label: '智能写作' },
-  { to: '/library', icon: Library, label: '素材库' },
-  { to: '/review', icon: ShieldCheck, label: '内容审核' },
-  { to: '/publish', icon: Send, label: '发布协作' },
+  { to: '/outlines/a001', icon: ListTree, label: '大纲构建' },
+  { to: '/write/a001', icon: PenTool, label: '智能写作' },
+  { to: '/materials', icon: Library, label: '素材库' },
+  { to: '/review/a003', icon: ShieldCheck, label: '内容审核' },
+  { to: '/publish/a003', icon: Send, label: '发布协作' },
   { to: '/analytics', icon: BarChart3, label: '数据复盘' },
 ]
 

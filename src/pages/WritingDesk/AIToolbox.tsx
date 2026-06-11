@@ -14,6 +14,13 @@ import {
   ChevronRight,
 } from 'lucide-react';
 
+interface AIToolboxProps {
+  onApplyTone: (tone: AITone, selectedText?: string) => string | Promise<string>;
+  onExpand: (level: string) => string;
+  onInsertGolden: (index: number) => string;
+  onPolish: (options: string[]) => string;
+}
+
 const toneOptions: { id: AITone; label: string; description: string; icon: React.ReactNode; color: string }[] = [
   {
     id: 'formal',
@@ -97,17 +104,59 @@ function Modal({ title, onClose, children }: ModalProps) {
   );
 }
 
-export default function AIToolbox() {
+export default function AIToolbox({
+  onApplyTone,
+  onExpand,
+  onInsertGolden,
+  onPolish,
+}: AIToolboxProps) {
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [selectedTone, setSelectedTone] = useState<AITone>('casual');
+  const [expandLevel, setExpandLevel] = useState<string>('适中');
+  const [polishOptions, setPolishOptions] = useState<string[]>(['优化用词', '调整句式', '增强逻辑']);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const handleProcess = () => {
+  const handleApplyTone = async () => {
     setIsProcessing(true);
-    setTimeout(() => {
+    try {
+      await onApplyTone(selectedTone);
+    } finally {
       setIsProcessing(false);
       setActiveModal(null);
-    }, 1500);
+    }
+  };
+
+  const handleExpand = () => {
+    setIsProcessing(true);
+    setTimeout(() => {
+      onExpand(expandLevel);
+      setIsProcessing(false);
+      setActiveModal(null);
+    }, 800);
+  };
+
+  const handleInsertGolden = () => {
+    setIsProcessing(true);
+    setTimeout(() => {
+      onInsertGolden(0);
+      setIsProcessing(false);
+      setActiveModal(null);
+    }, 500);
+  };
+
+  const handlePolish = () => {
+    setIsProcessing(true);
+    setTimeout(() => {
+      onPolish(polishOptions);
+      setIsProcessing(false);
+      setActiveModal(null);
+    }, 1000);
+  };
+
+  const togglePolishOption = (item: string) => {
+    setPolishOptions((prev) =>
+      prev.includes(item) ? prev.filter((o) => o !== item) : [...prev, item]
+    );
   };
 
   return (
@@ -220,7 +269,7 @@ export default function AIToolbox() {
                 取消
               </button>
               <button
-                onClick={handleProcess}
+                onClick={handleApplyTone}
                 disabled={isProcessing}
                 className="flex-1 py-2.5 text-sm font-medium text-white bg-vermilion rounded-lg hover:bg-vermilion-400 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5"
               >
@@ -249,12 +298,13 @@ export default function AIToolbox() {
               <div>
                 <label className="text-xs font-medium text-ink-600 mb-1.5 block">扩写强度</label>
                 <div className="flex gap-2">
-                  {['轻度', '适中', '详细'].map((level, i) => (
+                  {['轻度', '适中', '详细'].map((level) => (
                     <button
                       key={level}
+                      onClick={() => setExpandLevel(level)}
                       className={cn(
                         'flex-1 py-2 text-sm rounded-lg transition-colors',
-                        i === 1
+                        expandLevel === level
                           ? 'bg-vermilion text-white'
                           : 'bg-ink-100 text-ink-600 hover:bg-ink-200'
                       )}
@@ -280,7 +330,7 @@ export default function AIToolbox() {
                 取消
               </button>
               <button
-                onClick={handleProcess}
+                onClick={handleExpand}
                 disabled={isProcessing}
                 className="flex-1 py-2.5 text-sm font-medium text-white bg-moss rounded-lg hover:bg-moss-600 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5"
               >
@@ -322,7 +372,7 @@ export default function AIToolbox() {
                 取消
               </button>
               <button
-                onClick={handleProcess}
+                onClick={handleInsertGolden}
                 disabled={isProcessing}
                 className="flex-1 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-gold-400 to-gold-500 rounded-lg hover:from-gold-500 hover:to-gold-600 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5"
               >
@@ -343,9 +393,18 @@ export default function AIToolbox() {
           <div className="p-5">
             <p className="text-sm text-ink-500 mb-4">优化语言表达，提升文章整体文采</p>
             <div className="space-y-2 mb-5">
-              {['优化用词', '调整句式', '增强逻辑', '提升文采'].map((item, i) => (
-                <div key={item} className="flex items-center gap-2 p-2.5 bg-ink-50 rounded-lg">
-                  <input type="checkbox" defaultChecked={i < 3} className="w-4 h-4 text-vermilion" />
+              {['优化用词', '调整句式', '增强逻辑', '提升文采'].map((item) => (
+                <div
+                  key={item}
+                  onClick={() => togglePolishOption(item)}
+                  className="flex items-center gap-2 p-2.5 bg-ink-50 rounded-lg cursor-pointer hover:bg-ink-100 transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    checked={polishOptions.includes(item)}
+                    onChange={() => togglePolishOption(item)}
+                    className="w-4 h-4 text-vermilion"
+                  />
                   <span className="text-sm text-ink-700">{item}</span>
                 </div>
               ))}
@@ -358,7 +417,7 @@ export default function AIToolbox() {
                 取消
               </button>
               <button
-                onClick={handleProcess}
+                onClick={handlePolish}
                 disabled={isProcessing}
                 className="flex-1 py-2.5 text-sm font-medium text-white bg-vermilion rounded-lg hover:bg-vermilion-400 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5"
               >

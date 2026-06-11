@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils';
 import ImageGallery from './ImageGallery';
 import ReferenceList from './ReferenceList';
 import BrandTerms from './BrandTerms';
+import { useMaterialStore } from '@/store/materialStore';
 
 type TabKey = 'images' | 'references' | 'brands';
 
@@ -14,6 +15,7 @@ const tabs: { key: TabKey; label: string }[] = [
 
 export default function MaterialLibrary() {
   const [activeTab, setActiveTab] = useState<TabKey>('images');
+  const { materials, brandTerms } = useMaterialStore();
 
   return (
     <div className="min-h-screen bg-paper-50 p-6">
@@ -47,9 +49,9 @@ export default function MaterialLibrary() {
           </div>
 
           <div className="p-6">
-            {activeTab === 'images' && <ImageGallery />}
-            {activeTab === 'references' && <ReferenceList />}
-            {activeTab === 'brands' && <BrandTerms />}
+            {activeTab === 'images' && <ImageGallery materials={materials} />}
+            {activeTab === 'references' && <ReferenceList materials={materials} />}
+            {activeTab === 'brands' && <BrandTerms brandTerms={brandTerms} />}
           </div>
         </div>
       </div>

@@ -7,53 +7,13 @@ interface CommentItem extends Comment {
   replies?: CommentItem[];
 }
 
-const mockComments: CommentItem[] = [
-  {
-    id: 'c001',
-    articleId: 'a001',
-    content: '第二部分的案例数据需要更新一下，最新的行业报告已经出来了。',
-    author: '李编辑',
-    status: 'resolved',
-    createdAt: '2026-06-09 11:20',
-    replies: [
-      {
-        id: 'c001-r1',
-        articleId: 'a001',
-        content: '好的，我已经替换成了2026年Q1的数据。',
-        author: '张三',
-        status: 'resolved',
-        createdAt: '2026-06-09 14:30',
-      },
-    ],
-  },
-  {
-    id: 'c002',
-    articleId: 'a001',
-    content: '开头的引言部分可以再凝练一些，现在有点长了，建议控制在300字以内。',
-    author: '王主编',
-    status: 'open',
-    createdAt: '2026-06-10 09:15',
-  },
-  {
-    id: 'c003',
-    articleId: 'a001',
-    paragraphRef: 'p3',
-    content: '这里提到的"注意力经济"概念，是否需要加个注释说明一下来源？',
-    author: '李编辑',
-    status: 'open',
-    createdAt: '2026-06-10 10:45',
-    replies: [
-      {
-        id: 'c003-r1',
-        articleId: 'a001',
-        content: '同意，建议引用 Davenport 的那篇经典论文。',
-        author: '王主编',
-        status: 'open',
-        createdAt: '2026-06-10 11:00',
-      },
-    ],
-  },
-];
+interface CommentPanelProps {
+  comments: Comment[];
+  articleId: string;
+  onAddComment: (content: string, author: string) => void;
+  onAddReply: (parentId: string, content: string, author: string) => void;
+  onResolve: (id: string) => void;
+}
 
 function getInitial(name: string) {
   return name.charAt(0);
@@ -71,6 +31,16 @@ function getAvatarColor(name: string) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
   return colors[Math.abs(hash) % colors.length];
+}
+
+function formatDate(isoString: string): string {
+  const date = new Date(isoString);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const h = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${d} ${h}:${min}`;
 }
 
 interface CommentCardProps {
@@ -106,7 +76,12 @@ function CommentCard({ comment, isReply, onResolve, onReply }: CommentCardProps)
               <span className={cn('text-sm font-medium', isResolved ? 'text-ink-400' : 'text-ink-700')}>
                 {comment.author}
               </span>
-              <span className="text-xs text-ink-300">{comment.createdAt}</span>
+              <span className="text-xs text-ink-300">{formatDate(comment.createdAt)}</span>
+              {comment.paragraphRef && (
+                <span className="text-[10px] text-ink-400 bg-paper-100 px-1.5 py-0.5 rounded">
+                  段落 {comment.paragraphRef}
+                </span>
+              )}
               {isResolved && (
                 <span className="flex items-center gap-0.5 text-[10px] text-moss-500 bg-moss-50 px-1.5 py-0.5 rounded">
                   <CheckCircle className="w-3 h-3" />
@@ -156,59 +131,33 @@ function CommentCard({ comment, isReply, onResolve, onReply }: CommentCardProps)
   );
 }
 
-export default function CommentPanel() {
-  const [comments, setComments] = useState<CommentItem[]>(mockComments);
+export default function CommentPanel({
+  comments,
+  articleId,
+  onAddComment,
+  onAddReply,
+  onResolve,
+}: CommentPanelProps) {
   const [inputValue, setInputValue] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
+
+  const displayComments: CommentItem[] = [...comments].sort((a, b) => {
+    const aOpen = a.status === 'open' ? 0 : 1;
+    const bOpen = b.status === 'open' ? 0 : 1;
+    if (aOpen !== bOpen) return aOpen - bOpen;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
 
   const handleSend = () => {
     if (!inputValue.trim()) return;
 
-    const newComment: CommentItem = {
-      id: `c-new-${Date.now()}`,
-      articleId: 'a001',
-      content: inputValue,
-      author: '我',
-      status: 'open',
-      createdAt: new Date().toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-      }).replace(/\//g, '-'),
-    };
-
     if (replyingTo) {
-      setComments((prev) =>
-        prev.map((c) =>
-          c.id === replyingTo
-            ? { ...c, replies: [...(c.replies || []), newComment] }
-            : c
-        )
-      );
+      onAddReply(replyingTo, inputValue.trim(), '我');
       setReplyingTo(null);
     } else {
-      setComments((prev) => [newComment, ...prev]);
+      onAddComment(inputValue.trim(), '我');
     }
     setInputValue('');
-  };
-
-  const handleResolve = (id: string) => {
-    setComments((prev) =>
-      prev.map((c) => {
-        if (c.id === id) return { ...c, status: 'resolved' as const };
-        if (c.replies) {
-          return {
-            ...c,
-            replies: c.replies.map((r) =>
-              r.id === id ? { ...r, status: 'resolved' as const } : r
-            ),
-          };
-        }
-        return c;
-      })
-    );
   };
 
   const openCount = comments.filter((c) => c.status === 'open').length;
@@ -224,14 +173,22 @@ export default function CommentPanel() {
       </div>
 
       <div className="space-y-3 flex-1 overflow-y-auto -mx-1 mb-4">
-        {comments.map((comment) => (
-          <CommentCard
-            key={comment.id}
-            comment={comment}
-            onResolve={handleResolve}
-            onReply={(id) => setReplyingTo(id)}
-          />
-        ))}
+        {displayComments.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-ink-400 text-sm">
+            <MessageSquare className="w-12 h-12 mb-2 opacity-30" />
+            <p>暂无评论</p>
+            <p className="text-xs mt-1">在下方输入框添加第一条评论</p>
+          </div>
+        ) : (
+          displayComments.map((comment) => (
+            <CommentCard
+              key={comment.id}
+              comment={comment}
+              onResolve={onResolve}
+              onReply={(id) => setReplyingTo(id)}
+            />
+          ))
+        )}
       </div>
 
       <div className="border-t border-paper-200 pt-3">
