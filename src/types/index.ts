@@ -114,6 +114,7 @@ export interface ReviewIssue {
   position: number;
   resolved: boolean;
   resolvedType?: ResolvedType;
+  accepted?: boolean;
 }
 
 export interface CalendarItem {

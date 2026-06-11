@@ -3,6 +3,7 @@ import { Plus, Package, Megaphone, Ban, MessageSquare, Trash2, ArrowRight, X } f
 import { cn } from '@/lib/utils';
 import type { BrandTerm, BrandTermCategory } from '@/types';
 import { useMaterialStore } from '@/store/materialStore';
+import { useArticleStore } from '@/store/articleStore';
 import { useToast } from '@/components/ui/Toast';
 
 interface BrandTermsProps {
@@ -27,6 +28,7 @@ export default function BrandTerms({ brandTerms }: BrandTermsProps) {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const { addBrandTerm, deleteBrandTerm } = useMaterialStore();
+  const { appendDraftContent } = useArticleStore();
   const { showToast } = useToast();
 
   const filteredTerms =
@@ -76,7 +78,12 @@ export default function BrandTerms({ brandTerms }: BrandTermsProps) {
   };
 
   const handleInsert = (term: BrandTerm) => {
-    showToast(`已插入词汇"${term.term}"`, 'info');
+    if (term.isForbidden) {
+      appendDraftContent('a001', `**【${term.replacement || term.term}】**`);
+    } else {
+      appendDraftContent('a001', term.term);
+    }
+    showToast(`已插入品牌词「${term.term}」`, 'success');
   };
 
   const getCardBorderClass = (term: BrandTerm) => {

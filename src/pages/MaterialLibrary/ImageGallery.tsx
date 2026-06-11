@@ -3,6 +3,7 @@ import { Pencil, Trash2, Plus, Upload, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Material } from '@/types';
 import { useMaterialStore } from '@/store/materialStore';
+import { useArticleStore } from '@/store/articleStore';
 import { useToast } from '@/components/ui/Toast';
 
 interface ImageGalleryProps {
@@ -27,6 +28,7 @@ export default function ImageGallery({ materials }: ImageGalleryProps) {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const { addMaterial, deleteMaterial, updateMaterial } = useMaterialStore();
+  const { appendDraftContent } = useArticleStore();
   const { showToast } = useToast();
 
   const images = materials.filter((m) => m.type === 'image');
@@ -72,7 +74,9 @@ export default function ImageGallery({ materials }: ImageGalleryProps) {
   };
 
   const handleInsert = (image: Material) => {
-    showToast(`已插入"${image.title}"到写作页`, 'info');
+    const title = image.caption || image.title;
+    appendDraftContent('a001', `\n\n![${title}](${image.imageUrl})\n`);
+    showToast(`已插入「${image.title}」图片到写作草稿`, 'success');
   };
 
   return (

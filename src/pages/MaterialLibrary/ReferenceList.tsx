@@ -3,6 +3,7 @@ import { Plus, Link2, Quote, ExternalLink, Trash2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Material } from '@/types';
 import { useMaterialStore } from '@/store/materialStore';
+import { useArticleStore } from '@/store/articleStore';
 import { useToast } from '@/components/ui/Toast';
 import TagPill from '@/components/ui/TagPill';
 
@@ -27,6 +28,7 @@ export default function ReferenceList({ materials }: ReferenceListProps) {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const { addReference, deleteMaterial } = useMaterialStore();
+  const { appendDraftContent } = useArticleStore();
   const { showToast } = useToast();
 
   const references: ReferenceItem[] = materials
@@ -60,7 +62,8 @@ export default function ReferenceList({ materials }: ReferenceListProps) {
   };
 
   const handleInsert = (item: ReferenceItem) => {
-    showToast(`已插入引用"${item.title}"`, 'info');
+    appendDraftContent('a001', `\n\n> ${item.title}\n> —— ${item.source || '来自网络'}\n`);
+    showToast(`已插入引用「${item.title}」`, 'success');
   };
 
   return (

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { AlertOctagon, AlertTriangle, ShieldCheck, AlertCircle, SpellCheck, Copy, FileCheck, Check, X, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { ReviewIssue, IssueType, IssueSeverity } from '@/types';
+import type { ReviewIssue, IssueType, IssueSeverity, ResolvedType } from '@/types';
 
 const typeConfig: Record<IssueType, { label: string; icon: React.ComponentType<{ className?: string }>; colorClass: string }> = {
   sensitive: { label: '敏感词', icon: AlertCircle, colorClass: 'text-vermilion-500 bg-vermilion-50' },
@@ -21,8 +21,6 @@ const severityOrder: Record<IssueSeverity, number> = { high: 0, medium: 1, low: 
 const allTypes: (IssueType | 'all')[] = ['all', 'sensitive', 'typo', 'duplicate', 'compliance'];
 const allSeverities: (IssueSeverity | 'all')[] = ['all', 'high', 'medium', 'low'];
 
-type FilterMode = 'unresolved' | 'all';
-
 interface IssueListProps {
   issues: ReviewIssue[];
   onAccept: (id: string) => void;
@@ -32,40 +30,80 @@ interface IssueListProps {
 export default function IssueList({ issues, onAccept, onIgnore }: IssueListProps) {
   const [typeFilter, setTypeFilter] = useState<IssueType | 'all'>('all');
   const [severityFilter, setSeverityFilter] = useState<IssueSeverity | 'all'>('all');
-  const [filterMode, setFilterMode] = useState<FilterMode>('unresolved');
+  const [statusFilter, setStatusFilter] = useState<ResolvedType | 'all' | 'unresolved'>('all');
 
   const filteredIssues = issues
     .filter((issue) => {
-      if (filterMode === 'unresolved' && issue.resolved) return false;
+      if (statusFilter === 'unresolved' && issue.resolved) return false;
+      if (statusFilter === 'accepted' && !(issue.resolved && issue.resolvedType === 'accepted')) return false;
+      if (statusFilter === 'ignored' && !(issue.resolved && issue.resolvedType === 'ignored')) return false;
       if (typeFilter !== 'all' && issue.type !== typeFilter) return false;
       if (severityFilter !== 'all' && issue.severity !== severityFilter) return false;
       return true;
     })
     .sort((a, b) => {
-      const aOrder = a.resolved ? 1 : 0;
-      const bOrder = b.resolved ? 1 : 0;
+      const aOrder = a.resolved ? (a.resolvedType === 'accepted' ? 2 : 3) : 0;
+      const bOrder = b.resolved ? (b.resolvedType === 'accepted' ? 2 : 3) : 0;
       if (aOrder !== bOrder) return aOrder - bOrder;
       return severityOrder[a.severity] - severityOrder[b.severity];
     });
 
   const unresolvedCount = issues.filter((i) => !i.resolved).length;
+  const acceptedCount = issues.filter((i) => i.resolved && i.resolvedType === 'accepted').length;
+  const ignoredCount = issues.filter((i) => i.resolved && i.resolvedType === 'ignored').length;
+
+  const getStatusBadge = (issue: ReviewIssue) => {
+    if (!issue.resolved) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-vermilion-100 text-vermilion-600">
+          <AlertCircle className="w-3 h-3" />
+          待处理
+        </span>
+      );
+    }
+    if (issue.resolvedType === 'accepted') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-moss-100 text-moss-600">
+          <Check className="w-3 h-3" />
+          已接受修正
+        </span>
+      );
+    }
+    if (issue.resolvedType === 'ignored') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-ink-100 text-ink-500">
+          <X className="w-3 h-3" />
+          已忽略保留
+        </span>
+      );
+    }
+    return null;
+  };
 
   return (
     <div className="bg-paper rounded-2xl p-5 shadow-paper">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-bold text-ink-800 font-serif">问题列表</h3>
-        <span className="text-xs text-ink-400">共 {unresolvedCount} 条待处理</span>
+        <div className="flex items-center gap-3 text-xs">
+          <span className="text-vermilion-500">待处理 {unresolvedCount}</span>
+          <span className="text-ink-300">|</span>
+          <span className="text-moss-500">已接受 {acceptedCount}</span>
+          <span className="text-ink-300">|</span>
+          <span className="text-ink-400">已忽略 {ignoredCount}</span>
+        </div>
       </div>
 
       <div className="flex gap-2 mb-4 flex-wrap">
         <div className="relative">
           <select
-            value={filterMode}
-            onChange={(e) => setFilterMode(e.target.value as FilterMode)}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as ResolvedType | 'all' | 'unresolved')}
             className="appearance-none pl-3 pr-7 py-1.5 text-xs font-medium bg-paper-100 text-ink-600 rounded-lg border-0 focus:ring-2 focus:ring-vermilion/20 focus:outline-none cursor-pointer"
           >
-            <option value="unresolved">仅未处理</option>
-            <option value="all">全部问题</option>
+            <option value="all">全部状态</option>
+            <option value="unresolved">待处理</option>
+            <option value="accepted">已接受</option>
+            <option value="ignored">已忽略</option>
           </select>
           <ChevronDown className="w-3 h-3 text-ink-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
         </div>
@@ -113,8 +151,8 @@ export default function IssueList({ issues, onAccept, onIgnore }: IssueListProps
               key={issue.id}
               className={cn(
                 'rounded-xl border p-4 transition-all',
-                isAccepted && 'bg-moss-50/50 border-moss-200 opacity-60',
-                isIgnored && 'bg-paper-100 border-paper-200 opacity-50',
+                isAccepted && 'bg-moss-50/50 border-moss-200',
+                isIgnored && 'bg-paper-100 border-paper-200 opacity-70',
                 !issue.resolved && 'bg-paper border-paper-200 hover:border-vermilion-200 hover:shadow-paper-hover'
               )}
             >
@@ -124,37 +162,26 @@ export default function IssueList({ issues, onAccept, onIgnore }: IssueListProps
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <span className="text-xs font-medium text-ink-600">{typeInfo.label}</span>
                     <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium', severityInfo.className)}>
                       <SeverityIcon className="w-3 h-3" />
                       {severityInfo.label}
                     </span>
-                    {isAccepted && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-moss-100 text-moss-600">
-                        <Check className="w-3 h-3" />
-                        已接受
-                      </span>
-                    )}
-                    {isIgnored && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-ink-100 text-ink-500">
-                        <X className="w-3 h-3" />
-                        已忽略
-                      </span>
-                    )}
+                    {getStatusBadge(issue)}
                   </div>
 
                   <div className={cn(
                     'px-3 py-2 rounded-lg mb-2',
                     isAccepted && 'bg-moss-50 line-through decoration-moss-400',
-                    isIgnored && 'bg-paper-50 line-through decoration-ink-300',
+                    isIgnored && 'bg-paper-50',
                     !issue.resolved && 'bg-vermilion-50'
                   )}>
                     <p className={cn(
                       'text-sm',
                       !issue.resolved && 'text-vermilion-700 line-through decoration-vermilion-400',
                       isAccepted && 'text-moss-700',
-                      isIgnored && 'text-ink-500'
+                      isIgnored && 'text-ink-500 italic'
                     )}>
                       {issue.originalText}
                     </p>
@@ -200,7 +227,7 @@ export default function IssueList({ issues, onAccept, onIgnore }: IssueListProps
         {filteredIssues.length === 0 && (
           <div className="text-center py-12">
             <FileCheck className="w-12 h-12 text-moss-400 mx-auto mb-3" />
-            <p className="text-sm text-ink-500">暂无待处理问题</p>
+            <p className="text-sm text-ink-500">暂无符合筛选条件的问题</p>
           </div>
         )}
       </div>

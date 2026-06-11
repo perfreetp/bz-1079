@@ -126,6 +126,8 @@ interface ArticleStore {
   getCommentsByArticleId: (articleId: string) => Comment[];
   addReply: (parentId: string, reply: Comment) => void;
   loadIssuesForArticle: (articleId: string) => ReviewIssue[];
+  appendDraftContent: (articleId: string, text: string) => void;
+  getDraftContent: (articleId: string) => string;
 }
 
 const getArticleIdByIssueId = (issues: ReviewIssue[], issueId: string): string | null => {
@@ -307,5 +309,24 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
     }
 
     return articleIssues;
+  },
+
+  appendDraftContent: (articleId, text) => {
+    const key = `mobi_draft_content_${articleId}`;
+    try {
+      const existing = localStorage.getItem(key) || '';
+      localStorage.setItem(key, existing + text);
+    } catch {
+      // ignore
+    }
+  },
+
+  getDraftContent: (articleId) => {
+    const key = `mobi_draft_content_${articleId}`;
+    try {
+      return localStorage.getItem(key) || '';
+    } catch {
+      return '';
+    }
   },
 }));

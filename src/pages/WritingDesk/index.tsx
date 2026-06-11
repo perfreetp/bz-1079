@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import type { OutlineSection, AITone } from '@/types';
 import RichEditor from './RichEditor';
@@ -157,17 +157,27 @@ const expandCaseTexts: Record<string, string> = {
   '详细': `\n\n三、实战案例解析\n\n以某新锐茶饮品牌"茶语轩"为例，该品牌通过精准的数字化内容营销策略，在2024年上半年短短6个月内实现了品牌知名度87%的提升、线上订单量156%的增长以及会员复购率42%的优异成绩，成为新消费领域内容营销的标杆案例。\n\n其核心策略在于多维度的系统化布局：首先，通过全网用户行为数据分析，精准锁定了25-35岁的一二线城市都市白领人群，将其作为核心目标受众，并深度洞察了这一群体"追求品质生活、注重健康理念、乐于社交分享"的消费特征；其次，围绕"健康、品质、生活方式"三大核心关键词构建了完整的内容矩阵，涵盖产品故事、原料溯源、制茶工艺、生活美学等多个维度，确保内容的深度与广度；再次，结合小红书、抖音、微信公众号等主流平台的内容生态特性，定制化产出符合平台用户习惯的优质内容，小红书侧重图文笔记与达人种草，抖音侧重短视频与直播互动，公众号侧重深度品牌故事与用户社群运营；最后，建立了完善的数据监测与优化体系，通过实时追踪内容曝光量、互动率、转化率等关键指标，持续迭代内容策略，形成了从内容种草、用户互动到最终转化的完整营销闭环。该案例充分证明了，在数字化时代，系统化、数据驱动的内容创作策略能够为品牌带来持续且可观的商业价值。`,
 };
 
+const toneLabelMap = { formal: '正式', casual: '轻松', professional: '专业', literary: '文艺' };
+
 export default function WritingDesk() {
   const { id } = useParams<{ id: string }>();
   const articleId = id || 'default';
   const storageKey = `mobi_draft_${articleId}`;
+  const appendStorageKey = `mobi_draft_content_${articleId}`;
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [outlineCollapsed, setOutlineCollapsed] = useState(false);
   const [activeSectionId, setActiveSectionId] = useState('sec-2');
   const [content, setContent] = useState<string>(() => {
     try {
       const saved = localStorage.getItem(storageKey);
-      return saved || sampleContent;
+      let baseContent = saved || sampleContent;
+      const appended = localStorage.getItem(appendStorageKey);
+      if (appended && appended.length > 0) {
+        baseContent = baseContent + appended;
+        localStorage.removeItem(appendStorageKey);
+      }
+      return baseContent;
     } catch {
       return sampleContent;
     }
@@ -181,13 +191,17 @@ export default function WritingDesk() {
   useEffect(() => {
     try {
       const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        setContent(saved);
+      let baseContent = saved || sampleContent;
+      const appended = localStorage.getItem(appendStorageKey);
+      if (appended && appended.length > 0) {
+        baseContent = baseContent + appended;
+        localStorage.removeItem(appendStorageKey);
       }
+      setContent(baseContent);
     } catch {
       // ignore
     }
-  }, [storageKey]);
+  }, [storageKey, appendStorageKey]);
 
   const showToastMessage = useCallback((message: string) => {
     setToastMessage(message);
@@ -195,106 +209,90 @@ export default function WritingDesk() {
     setTimeout(() => setShowToast(false), 2500);
   }, []);
 
-  const applyFormalTone = (text: string): string => {
-    let result = text.replace(/你/g, '您');
-    const formalWords = ['综上所述，', '据此，', '特此说明，'];
-    const paragraphs = result.split('\n\n');
-    if (paragraphs.length > 0) {
-      const lastIdx = paragraphs.length - 1;
-      const lastPara = paragraphs[lastIdx];
-      if (!lastPara.startsWith('综上所述') && !lastPara.startsWith('据此') && !lastPara.startsWith('特此')) {
-        paragraphs[lastIdx] = formalWords[Math.floor(Math.random() * formalWords.length)] + lastPara;
-      }
-    }
-    return paragraphs.join('\n\n');
-  };
-
-  const applyCasualTone = (text: string): string => {
-    let result = text.replace(/因此/g, '所以');
-    const sentences = result.split(/(?<=[。！？!?.])/g);
-    const casualSuffixes = ['~', '啦', '呢'];
-    result = sentences.map((sentence, idx) => {
-      if (idx % 5 === 3 && sentence.length > 2) {
-        const suffix = casualSuffixes[Math.floor(Math.random() * casualSuffixes.length)];
-        return sentence.slice(0, -1) + suffix + sentence.slice(-1);
-      }
-      return sentence;
-    }).join('');
-    return result;
-  };
-
-  const applyProfessionalTone = (text: string): string => {
-    let result = text
-      .replace(/用户/g, '受众')
-      .replace(/好处/g, '价值')
-      .replace(/很多/g, '大量')
-      .replace(/用/g, '运用');
-    return result;
-  };
-
-  const applyLiteraryTone = (text: string): string => {
-    let result = text
-      .replace(/重要/g, '至关重要的')
-      .replace(/发展/g, '蓬勃发展')
-      .replace(/变化/g, '日新月异的变化')
-      .replace(/影响/g, '深远的影响');
-    return result;
-  };
-
   const onApplyTone = useCallback((tone: AITone, _selectedText?: string): string => {
-    let newContent = content;
-    let targetText = _selectedText;
+    const ta = textareaRef.current;
+    if (!ta) return content;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    let targetText: string;
+    let replaceStart: number, replaceEnd: number;
 
-    if (!targetText || targetText.trim() === '') {
-      const paragraphs = content.split('\n\n');
-      if (paragraphs.length > 0) {
-        targetText = paragraphs[0];
-      }
+    if (start !== end) {
+      targetText = content.slice(start, end);
+      replaceStart = start;
+      replaceEnd = end;
+    } else {
+      const beforeCursor = content.slice(0, start);
+      const afterCursor = content.slice(start);
+      const paraStart = beforeCursor.lastIndexOf('\n\n') !== -1 ? beforeCursor.lastIndexOf('\n\n') + 2 : 0;
+      const paraEnd = afterCursor.indexOf('\n\n') !== -1 ? start + afterCursor.indexOf('\n\n') : content.length;
+      targetText = content.slice(paraStart, paraEnd);
+      replaceStart = paraStart;
+      replaceEnd = paraEnd;
     }
 
-    if (targetText) {
-      let transformedText = targetText;
-      switch (tone) {
-        case 'formal':
-          transformedText = applyFormalTone(targetText);
-          break;
-        case 'casual':
-          transformedText = applyCasualTone(targetText);
-          break;
-        case 'professional':
-          transformedText = applyProfessionalTone(targetText);
-          break;
-        case 'literary':
-          transformedText = applyLiteraryTone(targetText);
-          break;
-      }
-
-      if (!_selectedText) {
-        const paragraphs = newContent.split('\n\n');
-        paragraphs[0] = transformedText;
-        newContent = paragraphs.join('\n\n');
-      } else {
-        newContent = newContent.replace(targetText, transformedText);
-      }
+    let modified = targetText;
+    switch (tone) {
+      case 'formal':
+        modified = modified.replace(/你/g, '您').replace(/所以/g, '据此，').replace(/但是/g, '然而，');
+        if (!modified.includes('综上所述')) modified += '\n\n综上所述，以上分析充分体现了相关内容的重要价值。';
+        break;
+      case 'casual':
+        modified = modified.replace(/因此/g, '所以呀').replace(/然而/g, '不过嘛').replace(/。/g, '~').replace(/！/g, '啦！');
+        modified = modified.replace(/重要/g, '超级重要').replace(/需要/g, '得');
+        break;
+      case 'professional':
+        modified = modified.replace(/用户/g, '目标受众').replace(/好处/g, '核心价值').replace(/用了/g, '采用了').replace(/很多/g, '大量');
+        modified = modified.replace(/我觉得/g, '根据行业分析显示');
+        break;
+      case 'literary':
+        modified = modified.replace(/重要/g, '至关重要且不可替代的').replace(/发展/g, '蓬勃向上的发展').replace(/好/g, '美好而令人向往');
+        modified = modified.replace(/内容/g, '饱含温度的文字内容').replace(/写/g, '用心编织');
+        break;
     }
 
+    const newContent = content.slice(0, replaceStart) + modified + content.slice(replaceEnd);
     setContent(newContent);
-    showToastMessage(`已应用${tone === 'formal' ? '正式' : tone === 'casual' ? '轻松' : tone === 'professional' ? '专业' : '文艺'}语气`);
+    showToastMessage(`已将${start !== end ? '所选内容' : '当前段落'}改写为「${toneLabelMap[tone]}」语气`);
     return newContent;
   }, [content, showToastMessage]);
 
   const onExpand = useCallback((level: string): string => {
+    const ta = textareaRef.current;
     const caseText = expandCaseTexts[level] || expandCaseTexts['适中'];
-    const newContent = content + caseText;
+    let insertPos = content.length;
+    if (ta) {
+      const cursorPos = ta.selectionStart;
+      if (cursorPos > 0) {
+        insertPos = cursorPos;
+      }
+    }
+    const newContent = content.slice(0, insertPos) + caseText + content.slice(insertPos);
     setContent(newContent);
     showToastMessage(`已追加${level}案例段落`);
     return newContent;
   }, [content, showToastMessage]);
 
   const onInsertGolden = useCallback((index: number): string => {
+    const ta = textareaRef.current;
     const actualIndex = index % goldenSentences.length;
     const golden = `「${goldenSentences[actualIndex]}」`;
-    const newContent = golden + '\n\n' + content;
+    let insertPos: number;
+    if (ta) {
+      const cursorPos = ta.selectionStart;
+      if (cursorPos > 0 && cursorPos < content.length) {
+        insertPos = cursorPos;
+      } else {
+        insertPos = content.length;
+        const lastParaBreak = content.lastIndexOf('\n\n');
+        if (lastParaBreak !== -1) {
+          insertPos = lastParaBreak + 2;
+        }
+      }
+    } else {
+      insertPos = content.length;
+    }
+    const newContent = content.slice(0, insertPos) + '\n\n' + golden + '\n\n' + content.slice(insertPos);
     setContent(newContent);
     showToastMessage('金句已插入');
     return newContent;
@@ -399,7 +397,7 @@ export default function WritingDesk() {
 
         <main className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto">
-            <RichEditor content={content} onChange={setContent} />
+            <RichEditor ref={textareaRef} content={content} onChange={setContent} />
           </div>
           <WritingProgress
             currentWords={wordCount}

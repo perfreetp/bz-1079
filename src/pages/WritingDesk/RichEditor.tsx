@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, forwardRef } from 'react';
 import { cn } from '@/lib/utils';
 import {
   Bold,
@@ -43,9 +43,10 @@ function ToolButton({ icon, active, onClick, title }: ToolButtonProps) {
   );
 }
 
-export default function RichEditor({ content, onChange }: RichEditorProps) {
+const RichEditor = forwardRef<HTMLTextAreaElement, RichEditorProps>(({ content, onChange }, ref) => {
   const [activeTool, setActiveTool] = useState<string | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const internalRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = (ref as React.MutableRefObject<HTMLTextAreaElement | null>) || internalRef;
   const [lineNumbers, setLineNumbers] = useState<number[]>([]);
 
   const wordCount = content.replace(/\s/g, '').length;
@@ -207,4 +208,6 @@ export default function RichEditor({ content, onChange }: RichEditorProps) {
       </div>
     </div>
   );
-}
+});
+
+export default RichEditor;

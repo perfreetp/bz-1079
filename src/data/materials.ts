@@ -252,7 +252,7 @@ export const reviewIssues: ReviewIssue[] = [
     severity: 'high',
     originalText: '最有效的私域运营方法',
     suggestion: '非常有效的私域运营方法',
-    position: 128,
+    position: 64,
     resolved: false,
   },
   {
@@ -262,7 +262,7 @@ export const reviewIssues: ReviewIssue[] = [
     severity: 'medium',
     originalText: '用户的年年龄分布',
     suggestion: '用户的年龄分布',
-    position: 356,
+    position: 167,
     resolved: false,
   },
   {
@@ -272,7 +272,7 @@ export const reviewIssues: ReviewIssue[] = [
     severity: 'high',
     originalText: '国家级权威认证',
     suggestion: '行业权威认证',
-    position: 512,
+    position: 321,
     resolved: false,
   },
   {
@@ -282,7 +282,7 @@ export const reviewIssues: ReviewIssue[] = [
     severity: 'low',
     originalText: '私域运营的核心是用户运营，用户运营的核心是私域运营',
     suggestion: '合并简化，避免语义重复',
-    position: 780,
+    position: 434,
     resolved: false,
   },
   {
@@ -292,8 +292,9 @@ export const reviewIssues: ReviewIssue[] = [
     severity: 'low',
     originalText: '做号准备',
     suggestion: '做好准备',
-    position: 924,
+    position: 564,
     resolved: true,
+    resolvedType: 'accepted',
   },
 ];
 
